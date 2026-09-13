@@ -1,0 +1,13 @@
+{
+  "id": "lan-share",
+  "name": "局域网文件共享",
+  "description": "在局域网内一键启动文件共享服务，PC / 安卓 / iOS 浏览器扫码即可上传下载，无需安装客户端",
+  "category": "网络/共享",
+  "tags": ["局域网", "文件共享", "HTTP", "上传", "下载", "跨平台"],
+  "icon": "network",
+  "author": "SoftwareToolkit",
+  "version": "1.0.0",
+  "kind": "Executable",
+  "path": "lan-share.bat",
+  "args": ""
+}

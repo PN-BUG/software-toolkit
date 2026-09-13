@@ -1,0 +1,10 @@
+{
+  "name": "示例插件工具",
+  "description": "这是一个通过 manifest.json 目录扫描加载的示例工具",
+  "category": "开发/示例",
+  "tags": ["示例", "插件", "manifest"],
+  "icon": "plugin",
+  "kind": "Executable",
+  "path": "notepad.exe",
+  "args": "${dir}\\readme.txt"
+}

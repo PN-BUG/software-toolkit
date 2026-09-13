@@ -1,0 +1,323 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>局域网文件共享</title>
+<style>
+:root {
+  --bg: #f0f2f5; --surface: #fff; --surface2: #f7f8fa;
+  --text: #1a1a2e; --text2: #6b7280; --text3: #9ca3af;
+  --border: #e5e7eb; --primary: #4f46e5; --primary-light: #eef2ff;
+  --primary-hover: #4338ca; --danger: #ef4444; --success: #10b981;
+  --warning: #f59e0b;
+  --shadow: 0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow-lg: 0 10px 25px rgba(0,0,0,.08);
+  --radius: 12px; --radius-sm: 8px;
+  --transition: .2s cubic-bezier(.4,0,.2,1);
+}
+[data-theme="dark"] {
+  --bg: #0f172a; --surface: #1e293b; --surface2: #273449;
+  --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b;
+  --border: #334155; --primary-light: #1e1b4b;
+  --shadow: 0 1px 3px rgba(0,0,0,.3);
+  --shadow-lg: 0 10px 25px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Microsoft YaHei","PingFang SC",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background var(--transition),color var(--transition)}
+.app{max-width:1400px;margin:0 auto;padding:16px;display:flex;flex-direction:column;height:100vh}
+.header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 20px;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:12px;transition:background var(--transition)}
+.header-left{display:flex;align-items:center;gap:12px}
+.logo{font-size:22px;font-weight:700;color:var(--primary);display:flex;align-items:center;gap:8px}
+.logo-icon{font-size:26px}
+.header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:14px;font-weight:500;transition:all var(--transition);white-space:nowrap}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(79,70,229,.3)}
+.btn-outline{background:transparent;color:var(--text);border:1.5px solid var(--border)}
+.btn-outline:hover{background:var(--surface2)}
+.btn-ghost{background:transparent;color:var(--text2);padding:8px}
+.btn-ghost:hover{background:var(--surface2);color:var(--text)}
+.btn-icon{width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px}
+.info-bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 20px;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:12px;font-size:13px;color:var(--text2);transition:background var(--transition)}
+.info-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--success);display:inline-block;margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.info-item{display:flex;align-items:center;gap:6px}
+.info-item strong{color:var(--text);font-weight:600}
+.main-layout{display:flex;gap:12px;flex:1;min-height:0}
+.device-sidebar{width:240px;flex-shrink:0;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;transition:background var(--transition)}
+.sidebar-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.sidebar-header h3{font-size:14px;font-weight:600;color:var(--text)}
+.device-list{flex:1;overflow-y:auto;padding:8px}
+.device-card{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:all var(--transition);margin-bottom:4px;border:1.5px solid transparent}
+.device-card:hover{background:var(--surface2)}
+.device-card.active{background:var(--primary-light);border-color:var(--primary)}
+.device-card .dev-avatar{width:36px;height:36px;border-radius:50%;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;flex-shrink:0}
+.device-card .dev-info{flex:1;min-width:0}
+.device-card .dev-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.device-card .dev-ip{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.device-card .dev-status{width:8px;height:8px;border-radius:50%;background:var(--success);flex-shrink:0}
+.device-card.self .dev-avatar{background:#dbeafe;color:#2563eb}
+.sidebar-footer{padding:10px 12px;border-top:1px solid var(--border)}
+.device-name-display{font-size:12px;color:var(--text2);text-align:center;padding:6px;cursor:pointer;border-radius:var(--radius-sm);transition:background var(--transition)}
+.device-name-display:hover{background:var(--surface2)}
+.device-name-input{width:100%;padding:6px 8px;border:1.5px solid var(--primary);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);color:var(--text);outline:none;text-align:center}
+.content-area{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;transition:background var(--transition)}
+.tab-bar{display:flex;border-bottom:1px solid var(--border);padding:0 8px;flex-shrink:0}
+.tab-btn{padding:12px 20px;border:none;background:transparent;color:var(--text2);font-size:14px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all var(--transition);white-space:nowrap}
+.tab-btn:hover{color:var(--text);background:var(--surface2)}
+.tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
+.tab-content{flex:1;display:none;flex-direction:column;min-height:0}
+.tab-content.active{display:flex}
+.breadcrumb{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:10px 16px;font-size:14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.breadcrumb a{color:var(--primary);text-decoration:none;padding:2px 6px;border-radius:4px;transition:background var(--transition)}
+.breadcrumb a:hover{background:var(--primary-light)}
+.breadcrumb .sep{color:var(--text3);margin:0 2px}
+.breadcrumb .current{color:var(--text);font-weight:500}
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.search-box{flex:1;min-width:150px;position:relative}
+.search-box input{width:100%;padding:8px 12px 8px 36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;background:var(--surface2);color:var(--text);transition:all var(--transition);outline:none}
+.search-box input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
+.search-box .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:14px}
+.view-toggle{display:flex;background:var(--surface2);border-radius:var(--radius-sm);padding:3px}
+.view-toggle button{padding:6px 10px;border:none;background:transparent;color:var(--text2);border-radius:6px;cursor:pointer;font-size:13px;transition:all var(--transition)}
+.view-toggle button.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.upload-zone{border:2px dashed var(--border);border-radius:var(--radius-sm);padding:24px;text-align:center;color:var(--text2);margin:12px 16px;transition:all var(--transition);cursor:pointer;background:var(--surface2);flex-shrink:0}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
+.upload-zone .upload-icon{font-size:32px;margin-bottom:6px}
+.upload-zone .upload-text{font-size:14px;font-weight:500}
+.upload-zone .upload-hint{font-size:12px;margin-top:4px;color:var(--text3)}
+.upload-zone input[type=file]{display:none}
+.progress-wrap{display:none;padding:0 16px;flex-shrink:0}
+.progress-wrap.active{display:block}
+.progress-bar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:4px}
+.progress-fill{height:100%;background:var(--primary);width:0;transition:width .3s;border-radius:3px}
+.progress-text{font-size:12px;color:var(--text2)}
+.file-scroll{flex:1;overflow-y:auto;padding:12px 16px}
+.file-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.file-grid.list-view{grid-template-columns:1fr}
+.file-card{background:var(--surface2);border-radius:var(--radius-sm);padding:14px;cursor:pointer;transition:all var(--transition);border:1.5px solid transparent;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;position:relative}
+.file-card:hover{border-color:var(--primary);transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.file-card .file-icon{font-size:36px;line-height:1}
+.file-card .file-name{font-size:12px;font-weight:500;color:var(--text);word-break:break-all;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.file-card .file-meta{font-size:10px;color:var(--text3)}
+.file-card .file-actions{position:absolute;top:6px;right:6px;opacity:0;transition:opacity var(--transition)}
+.file-card:hover .file-actions{opacity:1}
+.file-card .file-actions button{width:26px;height:26px;padding:0;border:none;border-radius:6px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:12px;transition:all var(--transition)}
+.file-card .file-actions button:hover{background:var(--primary);color:#fff}
+.list-view .file-card{flex-direction:row;align-items:center;gap:10px;text-align:left;padding:10px 14px}
+.list-view .file-card .file-icon{font-size:24px;flex-shrink:0}
+.list-view .file-card .file-name{-webkit-line-clamp:1;flex:1;font-size:13px}
+.list-view .file-card .file-meta{flex-shrink:0}
+.empty-state{text-align:center;padding:40px 20px;color:var(--text3)}
+.empty-state .empty-icon{font-size:48px;margin-bottom:10px}
+.empty-state .empty-text{font-size:15px;font-weight:500;color:var(--text2)}
+.empty-state .empty-hint{font-size:12px;margin-top:4px}
+.chat-container{display:flex;flex-direction:column;flex:1;min-height:0}
+.chat-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.chat-header .chat-target-name{font-size:14px;font-weight:600;color:var(--text)}
+.chat-header .chat-target-ip{font-size:12px;color:var(--text3)}
+.chat-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.chat-msg{max-width:75%;padding:10px 14px;border-radius:16px;font-size:13px;line-height:1.5;word-break:break-word;position:relative}
+.chat-msg.self{align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:4px}
+.chat-msg.other{align-self:flex-start;background:var(--surface2);color:var(--text);border-bottom-left-radius:4px}
+.chat-msg .msg-sender{font-size:11px;font-weight:600;margin-bottom:3px;opacity:.8}
+.chat-msg.self .msg-sender{color:rgba(255,255,255,.8)}
+.chat-msg.other .msg-sender{color:var(--primary)}
+.chat-msg .msg-time{font-size:10px;margin-top:4px;opacity:.6;text-align:right}
+.chat-msg .msg-file{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,.15);border-radius:8px;cursor:pointer;margin-top:6px}
+.chat-msg.other .msg-file{background:rgba(0,0,0,.05)}
+.chat-msg .msg-file:hover{opacity:.8}
+.chat-msg .msg-file-icon{font-size:20px}
+.chat-msg .msg-file-info{font-size:12px}
+.chat-msg .msg-file-name{font-weight:500}
+.chat-msg .msg-file-size{opacity:.7;font-size:11px}
+.chat-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:14px;flex-direction:column;gap:8px}
+.chat-empty-icon{font-size:48px}
+.chat-input-area{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end;flex-shrink:0}
+.chat-input-area textarea{flex:1;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;background:var(--surface2);color:var(--text);resize:none;outline:none;max-height:100px;min-height:40px;font-family:inherit;transition:border-color var(--transition)}
+.chat-input-area textarea:focus{border-color:var(--primary)}
+.chat-input-area .btn{height:40px}
+.transfer-scroll{flex:1;overflow-y:auto;padding:12px 16px}
+.transfer-item{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px}
+.transfer-item .tf-icon{font-size:24px;flex-shrink:0}
+.transfer-item .tf-info{flex:1;min-width:0}
+.transfer-item .tf-name{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.transfer-item .tf-meta{font-size:11px;color:var(--text3);display:flex;gap:12px;margin-top:2px}
+.transfer-item .tf-status{font-size:11px;font-weight:500;padding:3px 8px;border-radius:12px;flex-shrink:0}
+.transfer-item .tf-status.done{background:#d1fae5;color:#065f46}
+.transfer-item .tf-status.sending{background:#dbeafe;color:#1e40af}
+.transfer-item .tf-status.failed{background:#fee2e2;color:#991b1b}
+.toast-container{position:fixed;top:20px;right:20px;z-index:1000;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:var(--radius-sm);font-size:14px;color:#fff;box-shadow:var(--shadow-lg);animation:slideIn .3s ease;max-width:360px}
+.toast.success{background:var(--success)}
+.toast.error{background:var(--danger)}
+.toast.info{background:var(--primary)}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:999;animation:fadeIn .2s}
+.modal{background:var(--surface);border-radius:var(--radius);padding:24px;max-width:360px;width:90%;text-align:center;box-shadow:var(--shadow-lg)}
+.modal h3{margin-bottom:16px;font-size:18px}
+.modal .qr-wrap{background:#fff;padding:16px;border-radius:var(--radius-sm);display:inline-block;margin-bottom:12px}
+.modal .qr-url{font-size:13px;color:var(--text2);word-break:break-all;margin-bottom:16px;padding:8px 12px;background:var(--surface2);border-radius:6px}
+.modal .btn{margin:4px}
+.modal .form-group{margin-bottom:14px;text-align:left}
+.modal .form-group label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px}
+.modal .form-group input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;background:var(--surface2);color:var(--text);outline:none}
+.modal .form-group input:focus{border-color:var(--primary)}
+.modal .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@media(max-width:768px){
+  .app{padding:8px;height:auto}
+  .main-layout{flex-direction:column}
+  .device-sidebar{width:100%;max-height:180px;flex-direction:row}
+  .sidebar-header{writing-mode:vertical-rl;border-bottom:none;border-right:1px solid var(--border);padding:12px 8px}
+  .device-list{display:flex;overflow-x:auto;overflow-y:hidden;padding:8px}
+  .device-card{flex-shrink:0;margin-bottom:0;margin-right:4px}
+  .sidebar-footer{border-top:none;border-left:1px solid var(--border);display:flex;align-items:center;padding:8px}
+  .content-area{min-height:500px}
+  .file-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+  .file-card{padding:10px}
+  .file-card .file-icon{font-size:28px}
+  .header{padding:10px 14px}
+  .tab-btn{padding:10px 14px;font-size:13px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header-left"><span class="logo"><span class="logo-icon">🌐</span>局域网共享</span></div>
+    <div class="header-actions">
+      <button class="btn btn-outline btn-icon" id="btnQr" title="手机扫码访问">📱</button>
+      <button class="btn btn-outline btn-icon" id="btnTheme" title="切换深色模式">🌙</button>
+    </div>
+  </div>
+  <div class="info-bar">
+    <span class="info-item"><span class="dot"></span> 服务运行中</span>
+    <span class="info-item">📁 <strong id="infoDir">—</strong></span>
+    <span class="info-item">🔗 <strong id="infoUrl">—</strong></span>
+    <span class="info-item" id="infoMode">—</span>
+  </div>
+  <div class="main-layout">
+    <div class="device-sidebar">
+      <div class="sidebar-header"><h3>📡 设备</h3><button class="btn btn-primary btn-sm" id="btnAddDevice" title="手动添加设备">＋</button></div>
+      <div class="device-list" id="deviceList"></div>
+      <div class="sidebar-footer"><div class="device-name-display" id="deviceNameDisplay" title="点击编辑设备名">—</div></div>
+    </div>
+    <div class="content-area">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="files">📁 文件管理</button>
+        <button class="tab-btn" data-tab="chat">💬 聊天</button>
+        <button class="tab-btn" data-tab="transfers">📋 传输列表</button>
+      </div>
+      <div class="tab-content active" id="tab-files">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div class="toolbar">
+          <div class="search-box"><span class="search-icon">🔍</span><input type="text" id="searchInput" placeholder="搜索文件..."></div>
+          <div class="view-toggle"><button id="viewGrid" class="active" title="网格视图">⊞</button><button id="viewList" title="列表视图">☰</button></div>
+          <button class="btn btn-primary btn-sm" id="btnUpload">⬆ 上传</button>
+        </div>
+        <div class="upload-zone" id="uploadZone">
+          <div class="upload-icon">📂</div><div class="upload-text">拖拽文件到这里上传</div>
+          <div class="upload-hint">或点击选择文件 · 支持多文件</div>
+          <input type="file" id="fileInput" multiple>
+        </div>
+        <div class="progress-wrap" id="progressWrap"><div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div><div class="progress-text" id="progressText">上传中...</div></div>
+        <div class="file-scroll">
+          <div class="file-grid" id="fileGrid"></div>
+          <div class="empty-state" id="emptyState" style="display:none"><div class="empty-icon">📭</div><div class="empty-text">此目录为空</div><div class="empty-hint">拖拽文件到上方区域开始上传</div></div>
+        </div>
+      </div>
+      <div class="tab-content" id="tab-chat">
+        <div class="chat-header" id="chatHeader" style="display:none">
+          <div class="dev-avatar" id="chatAvatar" style="width:32px;height:32px;font-size:14px">?</div>
+          <div><div class="chat-target-name" id="chatTargetName">—</div><div class="chat-target-ip" id="chatTargetIp">—</div></div>
+        </div>
+        <div class="chat-messages" id="chatMessages" style="display:none"></div>
+        <div class="chat-empty" id="chatEmpty"><div class="chat-empty-icon">💬</div><div>选择左侧设备开始聊天</div></div>
+        <div class="chat-input-area" id="chatInputArea" style="display:none">
+          <button class="btn btn-outline btn-icon" id="btnChatFile" title="发送文件">📎</button>
+          <input type="file" id="chatFileInput" style="display:none">
+          <textarea id="chatInput" placeholder="输入消息..." rows="1"></textarea>
+          <button class="btn btn-primary" id="btnChatSend">发送</button>
+        </div>
+      </div>
+      <div class="tab-content" id="tab-transfers">
+        <div class="transfer-scroll" id="transferList"><div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">暂无传输记录</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+<div class="modal-overlay" id="qrModal" style="display:none">
+  <div class="modal"><h3>📱 手机扫码访问</h3><div class="qr-wrap"><canvas id="qrCanvas"></canvas></div>
+    <div class="qr-url" id="qrUrl"></div>
+    <button class="btn btn-primary" id="btnCopyUrl">📋 复制链接</button>
+    <button class="btn btn-outline" id="btnCloseQr">关闭</button>
+  </div>
+</div>
+<div class="modal-overlay" id="addDeviceModal" style="display:none">
+  <div class="modal"><h3>➕ 手动添加设备</h3>
+    <div class="form-group"><label>设备 IP 地址</label><input type="text" id="addDeviceIp" placeholder="例如 192.168.1.100"></div>
+    <div class="form-group"><label>端口号</label><input type="text" id="addDevicePort" placeholder="8088" value="8088"></div>
+    <div class="form-actions"><button class="btn btn-outline" id="btnCancelAddDevice">取消</button><button class="btn btn-primary" id="btnConfirmAddDevice">添加</button></div>
+  </div>
+</div>
+<script src="qrcode.min.js"></script>
+<script>
+var state = { path:'', files:[], view:'grid', theme:localStorage.getItem("lan-share-theme")||"light", serverInfo:null, deviceId:"", deviceName:"", clientId:localStorage.getItem("lan-share-clientId")||"", clientName:localStorage.getItem("lan-share-clientName")||"", devices:{}, chatTarget:null, messages:[], transfers:[], lastMsgTs:"" };
+function generateId(){return Math.random().toString(36).substr(2,8)}
+async function registerClient(){if(!state.clientId||!state.clientName)return;try{await fetch(api("/client/register"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clientId:state.clientId,clientName:state.clientName})})}catch(e){}}
+function promptClientName(){var n=prompt("请输入此设备的名称:",state.clientName||"");if(n&&n.trim()){state.clientName=n.trim();localStorage.setItem("lan-share-clientName",state.clientName);return true}return false}
+function api(p){var s=p.indexOf("?")>=0?"&":"?";var t=new URLSearchParams(location.search).get("t");return "/api"+p+(t?s+"t="+encodeURIComponent(t):"")}
+async function fetchList(d){var r=await fetch(api("/list?path="+encodeURIComponent(d||"")));if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+async function fetchInfo(){var r=await fetch(api("/info"));if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+function escHtml(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML}
+function escAttr(s){return s.replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;")}
+function getInitial(n){if(!n)return "?";return n.charAt(0).toUpperCase()}
+function formatSize(b){if(b>=1073741824)return(b/1073741824).toFixed(2)+" GB";if(b>=1048576)return(b/1048576).toFixed(2)+" MB";if(b>=1024)return(b/1024).toFixed(1)+" KB";return b+" B"}
+function formatTime(ts){if(!ts)return "—";var d=new Date(ts);var now=new Date();var hm=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");if(d.toDateString()===now.toDateString())return hm;return String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")+" "+hm}
+function showToast(m,t){var c=document.getElementById("toastContainer");var e=document.createElement("div");e.className="toast "+(t||"info");e.textContent=m;c.appendChild(e);setTimeout(function(){e.remove()},3000)}
+var icons={folder:"📁",image:"🖼️",video:"🎬",audio:"🎵",archive:"📦",code:"📝",doc:"📄",pdf:"📕",excel:"📊",ppt:"📽️",font:"🔤",disk:"💿",exec:"⚙️","default":"📄"};
+var imgE=["jpg","jpeg","png","gif","svg","webp","bmp","ico"],vidE=["mp4","avi","mkv","mov","wmv","flv","webm"],audE=["mp3","wav","flac","aac","ogg","wma"],arcE=["zip","rar","7z","tar","gz","bz2","xz"],codeE=["js","ts","jsx","tsx","py","java","c","cpp","h","cs","go","rs","rb","php","swift","kt","sql","sh","bat","ps1","yaml","yml","json","xml","html","css","scss","md"],docE=["txt","log","rtf"],excE=["xls","xlsx","csv"],pptE=["ppt","pptx"],fntE=["ttf","otf","woff","woff2"],dskE=["iso","img","vhd","vmdk"],exeE=["exe","msi","dll","so","dylib","app"];
+function getIcon(f){if(f.isDir)return icons.folder;var e=(f.name.split(".").pop()||"").toLowerCase();if(imgE.indexOf(e)>=0)return icons.image;if(vidE.indexOf(e)>=0)return icons.video;if(audE.indexOf(e)>=0)return icons.audio;if(arcE.indexOf(e)>=0)return icons.archive;if(e==="pdf")return icons.pdf;if(codeE.indexOf(e)>=0)return icons.code;if(docE.indexOf(e)>=0)return icons.doc;if(excE.indexOf(e)>=0)return icons.excel;if(pptE.indexOf(e)>=0)return icons.ppt;if(fntE.indexOf(e)>=0)return icons.font;if(dskE.indexOf(e)>=0)return icons.disk;if(exeE.indexOf(e)>=0)return icons.exec;return icons["default"]}
+// === Devices ===
+async function pollDevices(){try{var r=await fetch(api("/devices"));if(!r.ok)return;var l=await r.json();state.devices={};var seenIp={};l.forEach(function(d){if(d.id===state.clientId)return;if(d.ip){if(seenIp[d.ip])return;seenIp[d.ip]=1}state.devices[d.id]=d});renderDevices()}catch(e){}}
+function renderDevices(){var el=document.getElementById("deviceList");var h="";h+='<div class="device-card self active" data-id="'+state.clientId+'" onclick="selectDevice(\''+state.clientId+'\')"><div class="dev-avatar">'+getInitial(state.clientName)+'</div><div class="dev-info"><div class="dev-name">'+escHtml(state.clientName)+' (本机)</div><div class="dev-ip">'+(state.serverInfo?state.serverInfo.lanUrl.replace(/\/$/,""):"—")+'</div></div><div class="dev-status"></div></div>';var ids=Object.keys(state.devices).filter(function(id){return id!==state.clientId});ids.sort(function(a,b){return(state.devices[a].name||"").localeCompare(state.devices[b].name||"")});ids.forEach(function(id){var d=state.devices[id];var act=state.chatTarget&&state.chatTarget.id===id;var typeLabel=d.type==="server"?" 🖥️":" 📱";h+='<div class="device-card'+(act?" active":"")+'" data-id="'+id+'" onclick="selectDevice(\''+id+'\')"><div class="dev-avatar">'+getInitial(d.name)+'</div><div class="dev-info"><div class="dev-name">'+escHtml(d.name)+typeLabel+'</div><div class="dev-ip">'+escHtml(d.ip)+(d.port?":"+d.port:"")+'</div></div><div class="dev-status"></div></div>'});if(ids.length===0)h+='<div style="text-align:center;padding:20px;color:var(--text3);font-size:12px">等待其他设备上线...<br>或手动添加设备</div>';el.innerHTML=h}
+function selectDevice(id){if(id===state.clientId){state.chatTarget=null}else{state.chatTarget=state.devices[id]||null}renderDevices();renderChat();switchTab("chat")}
+function setupDeviceNameEdit(){var d=document.getElementById("deviceNameDisplay");d.addEventListener("click",function(){var inp=document.createElement("input");inp.type="text";inp.className="device-name-input";inp.value=state.clientName;d.replaceWith(inp);inp.focus();inp.select();var saved=false;function save(){if(saved)return;saved=true;var n=inp.value.trim()||state.clientName;state.clientName=n;localStorage.setItem("lan-share-clientName",n);registerClient().then(function(){showToast("设备名已更新","success");pollDevices()});var nd=document.createElement("div");nd.className="device-name-display";nd.id="deviceNameDisplay";nd.title="点击编辑设备名";nd.textContent="📱 "+n;inp.replaceWith(nd);setupDeviceNameEdit()}inp.addEventListener("blur",save);inp.addEventListener("keydown",function(e){if(e.key==="Enter")save();if(e.key==="Escape"){inp.value=state.clientName;inp.blur()}})})}
+function showAddDeviceDialog(){document.getElementById("addDeviceModal").style.display="flex";document.getElementById("addDeviceIp").value="";document.getElementById("addDeviceIp").focus()}
+function hideAddDeviceDialog(){document.getElementById("addDeviceModal").style.display="none"}
+async function addManualDevice(){var ip=document.getElementById("addDeviceIp").value.trim();var port=parseInt(document.getElementById("addDevicePort").value.trim())||8088;if(!ip){showToast("请输入 IP 地址","error");return}hideAddDeviceDialog();try{var r=await fetch("http://"+ip+":"+port+api("/info").replace(/^\//,""));if(!r.ok)throw new Error("HTTP "+r.status);var info=await r.json();state.devices[info.deviceId]={id:info.deviceId,name:info.deviceName,ip:ip,port:port,lastSeen:(new Date).toISOString()};renderDevices();showToast("已添加设备: "+info.deviceName,"success")}catch(e){showToast("无法连接到 "+ip+":"+port,"error")}}
+// === Chat ===
+async function pollMessages(){try{var u=api("/chat/messages"+(state.lastMsgTs?"?after="+encodeURIComponent(state.lastMsgTs):""));var r=await fetch(u);if(!r.ok)return;var m=await r.json();if(m.length>0){m.forEach(function(x){state.messages.push(x);if(x.ts>state.lastMsgTs)state.lastMsgTs=x.ts});renderChat();scrollChatBottom()}}catch(e){}}
+function renderChat(){var h=document.getElementById("chatHeader"),m=document.getElementById("chatMessages"),e=document.getElementById("chatEmpty"),i=document.getElementById("chatInputArea");if(!state.chatTarget){h.style.display="none";m.style.display="none";i.style.display="none";e.style.display="flex";return}h.style.display="flex";m.style.display="flex";i.style.display="flex";e.style.display="none";var t=state.chatTarget;document.getElementById("chatAvatar").textContent=getInitial(t.name);document.getElementById("chatTargetName").textContent=t.name;document.getElementById("chatTargetIp").textContent=t.ip+":"+t.port;var c=state.messages.filter(function(x){return(x.from===state.clientId&&x.to===t.id)||(x.from===t.id&&x.to===state.clientId)});var html="";if(c.length===0)html='<div style="text-align:center;color:var(--text3);padding:40px;font-size:13px">开始和 '+escHtml(t.name)+' 聊天吧</div>';c.forEach(function(x){var s=x.from===state.clientId;var cls=s?"self":"other";html+='<div class="chat-msg '+cls+'">';if(!s)html+='<div class="msg-sender">'+escHtml(x.fromName)+'</div>';if(x.type==="file"){html+='<div class="msg-file" onclick="downloadChatFile(\''+escAttr(x.text)+'\')"><span class="msg-file-icon">📄</span><div class="msg-file-info"><div class="msg-file-name">'+escHtml(x.text)+'</div><div class="msg-file-size">'+(x.fileSize?formatSize(x.fileSize):"")+'</div></div></div>'}else{html+='<div>'+escHtml(x.text).replace(/\n/g,"<br>")+'</div>'}html+='<div class="msg-time">'+formatTime(x.ts)+'</div></div>'});m.innerHTML=html}
+function scrollChatBottom(){var e=document.getElementById("chatMessages");setTimeout(function(){e.scrollTop=e.scrollHeight},50)}
+async function sendChatMessage(){var inp=document.getElementById("chatInput");var txt=inp.value.trim();if(!txt||!state.chatTarget)return;inp.value="";autoResizeTextarea(inp);var t=state.chatTarget;var p={from:state.clientId,fromName:state.clientName,to:t.id,text:txt,targetIp:t.ip,targetPort:t.port};try{await fetch(api("/chat/send"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});pollMessages()}catch(e){showToast("发送失败: "+e.message,"error")}}
+async function sendChatFile(f){if(!state.chatTarget)return;var t=state.chatTarget;var fd=new FormData();fd.append("file",f,f.name);try{var r=await fetch(api("/chat/file"),{method:"POST",headers:{"X-Device-Id":state.clientId,"X-Device-Name":state.clientName,"X-Target-Id":t.id,"X-Target-Ip":t.ip||"","X-Target-Port":t.port?String(t.port):""},body:fd});if(!r.ok)throw new Error("HTTP "+r.status);showToast("文件已发送: "+f.name,"success");pollMessages()}catch(e){showToast("文件发送失败: "+e.message,"error")}}
+function downloadChatFile(n){var a=document.createElement("a");a.href="/api/download?path=.lan-share-chat/"+encodeURIComponent(n);a.download=n;document.body.appendChild(a);a.click();document.body.removeChild(a)}
+function autoResizeTextarea(el){el.style.height="auto";el.style.height=Math.min(el.scrollHeight,100)+"px"}
+// === Transfers ===
+async function pollTransfers(){try{var r=await fetch(api("/transfers"));if(!r.ok)return;state.transfers=await r.json();renderTransfers()}catch(e){}}
+function renderTransfers(){var el=document.getElementById("transferList");if(!state.transfers||state.transfers.length===0){el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">暂无传输记录</div></div>';return}var h="";state.transfers.forEach(function(t){h+='<div class="transfer-item"><span class="tf-icon">📄</span><div class="tf-info"><div class="tf-name">'+escHtml(t.name||"—")+'</div><div class="tf-meta"><span>'+(t.size?formatSize(t.size):"")+'</span><span>'+(t.from||"")+' → '+(t.to||"")+'</span><span>'+formatTime(t.ts)+'</span></div></div><span class="tf-status '+(t.status||"done")+'">'+(t.status||"完成")+'</span></div>'});el.innerHTML=h}
+// === Tabs ===
+function switchTab(n){document.querySelectorAll(".tab-btn").forEach(function(b){b.classList.toggle("active",b.dataset.tab===n)});document.querySelectorAll(".tab-content").forEach(function(c){c.classList.toggle("active",c.id==="tab-"+n)})}
+// === File browser ===
+function renderBreadcrumb(){var bc=document.getElementById("breadcrumb");var parts=state.path.split("/").filter(Boolean);var h='<a href="#" data-path="">🏠 根目录</a>';var acc="";parts.forEach(function(p,i){acc+="/"+p;h+=' <span class="sep">›</span> ';if(i===parts.length-1)h+='<span class="current">'+escHtml(p)+'</span>';else h+='<a href="#" data-path="'+escAttr(acc)+'">'+escHtml(p)+'</a>'});bc.innerHTML=h;bc.querySelectorAll("a").forEach(function(a){a.addEventListener("click",function(e){e.preventDefault();navigate(a.dataset.path)})})}
+function renderFiles(filter){var g=document.getElementById("fileGrid");var em=document.getElementById("emptyState");var files=state.files;if(filter){var q=filter.toLowerCase();files=files.filter(function(f){return f.name.toLowerCase().indexOf(q)>=0})}if(!files.length){g.innerHTML="";em.style.display="block";return}em.style.display="none";var h="";files.forEach(function(f){var icon=getIcon(f);var sz=f.isDir?"—":formatSize(f.size);var tm=formatTime(f.lastModified);var nm=escHtml(f.name);var act="";if(!f.isDir)act='<div class="file-actions"><button title="下载" onclick="event.stopPropagation();downloadFile(\''+escAttr(f.name)+'\')">⬇</button></div>';h+='<div class="file-card" data-name="'+escAttr(f.name)+'" data-dir="'+f.isDir+'" onclick="'+(f.isDir?"navigate('"+escAttr((state.path?state.path+"/":"")+f.name)+"')":"openFile('"+escAttr(f.name)+"')")+'">'+act+'<div class="file-icon">'+icon+'</div><div class="file-name">'+nm+'</div><div class="file-meta">'+(f.isDir?"目录":sz+" · "+tm)+'</div></div>'});g.innerHTML=h}
+async function navigate(dir){state.path=dir||"";renderBreadcrumb();try{state.files=await fetchList(state.path);renderFiles(document.getElementById("searchInput").value)}catch(e){showToast("加载失败: "+e.message,"error")}}
+function openFile(name){var p=(state.path?state.path+"/":"")+name;window.open("/files/"+encodeURIComponent(p),"_blank")}
+function downloadFile(name){var p=(state.path?state.path+"/":"")+name;var a=document.createElement("a");a.href="/api/download?path="+encodeURIComponent(p);a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a)}
+// === Upload ===
+function setupUpload(){var z=document.getElementById("uploadZone"),i=document.getElementById("fileInput"),pw=document.getElementById("progressWrap"),pf=document.getElementById("progressFill"),pt=document.getElementById("progressText");z.addEventListener("click",function(){i.click()});i.addEventListener("change",function(){doUp(i.files)});["dragenter","dragover"].forEach(function(e){z.addEventListener(e,function(ev){ev.preventDefault();z.classList.add("drag-over")})});["dragleave","drop"].forEach(function(e){z.addEventListener(e,function(ev){ev.preventDefault();z.classList.remove("drag-over")})});z.addEventListener("drop",function(e){doUp(e.dataTransfer.files)});function doUp(files){if(!files||!files.length)return;var fd=new FormData();for(var j=0;j<files.length;j++)fd.append("files",files[j],files[j].name);var x=new XMLHttpRequest();pw.classList.add("active");pf.style.width="0";pt.textContent="上传中 (0%)...";x.open("POST",api("/upload?path="+encodeURIComponent(state.path)),true);x.upload.onprogress=function(e){if(e.lengthComputable){var p=Math.round(e.loaded/e.total*100);pf.style.width=p+"%";pt.textContent="上传中 ("+p+"%)..."}};x.onload=function(){pw.classList.remove("active");if(x.status>=200&&x.status<300){showToast("上传成功: "+x.responseText,"success");navigate(state.path)}else showToast("上传失败: "+x.responseText,"error")};x.onerror=function(){pw.classList.remove("active");showToast("网络错误","error")};x.send(fd)}}
+// === QR ===
+function showQrModal(){var url=state.serverInfo?state.serverInfo.lanUrl:location.origin+"/";document.getElementById("qrUrl").textContent=url;try{if(typeof qrcode==="undefined")throw new Error("QR library not loaded");var qr=qrcode(0,"M");qr.addData(url,"Byte");qr.make();var cv=document.getElementById("qrCanvas"),cs=5,m=cs*2,sz=qr.getModuleCount()*cs+m*2;cv.width=sz;cv.height=sz;var cx=cv.getContext("2d");cx.fillStyle="#ffffff";cx.fillRect(0,0,sz,sz);cx.fillStyle="#000000";for(var r=0;r<qr.getModuleCount();r++)for(var c=0;c<qr.getModuleCount();c++)if(qr.isDark(r,c))cx.fillRect(c*cs+m,r*cs+m,cs,cs)}catch(e){var cv=document.getElementById("qrCanvas");cv.width=200;cv.height=200;var cx=cv.getContext("2d");cx.fillStyle="#fff";cx.fillRect(0,0,200,200);cx.fillStyle="#666";cx.font="13px sans-serif";cx.textAlign="center";cx.fillText("Error: "+(e.message||e),100,100)}document.getElementById("qrModal").style.display="flex"}
+function applyTheme(){document.documentElement.setAttribute("data-theme",state.theme);document.getElementById("btnTheme").textContent=state.theme==="dark"?"☀️":"🌙";localStorage.setItem("lan-share-theme",state.theme)}
+// === Init ===
+async function init(){applyTheme();try{state.serverInfo=await fetchInfo();state.deviceId=state.serverInfo.deviceId||"";state.deviceName=state.serverInfo.deviceName||"";document.getElementById("infoDir").textContent=state.serverInfo.sharePath||"—";document.getElementById("infoUrl").textContent=state.serverInfo.lanUrl||location.origin;document.getElementById("infoMode").textContent=state.serverInfo.readOnly?"🔒 只读":"🔓 可读写"}catch(e){document.getElementById("infoDir").textContent="—";document.getElementById("infoUrl").textContent=location.origin}if(!state.clientId){state.clientId=generateId();localStorage.setItem("lan-share-clientId",state.clientId)}if(!state.clientName||!localStorage.getItem("lan-share-clientName")){var defName=state.deviceName||"未命名设备";state.clientName=defName;localStorage.setItem("lan-share-clientName",defName);setTimeout(function(){promptClientName()},500)}document.getElementById("deviceNameDisplay").textContent="📱 "+state.clientName;registerClient();setInterval(registerClient,10000);await navigate("");document.querySelectorAll(".tab-btn").forEach(function(b){b.addEventListener("click",function(){switchTab(b.dataset.tab)})});document.getElementById("btnQr").addEventListener("click",showQrModal);document.getElementById("btnTheme").addEventListener("click",function(){state.theme=state.theme==="dark"?"light":"dark";applyTheme()});document.getElementById("btnCloseQr").addEventListener("click",function(){document.getElementById("qrModal").style.display="none"});document.getElementById("qrModal").addEventListener("click",function(e){if(e.target===this)this.style.display="none"});document.getElementById("btnCopyUrl").addEventListener("click",function(){var u=state.serverInfo?state.serverInfo.lanUrl:location.origin+"/";navigator.clipboard.writeText(u).then(function(){showToast("链接已复制","success")})});document.getElementById("viewGrid").addEventListener("click",function(){state.view="grid";document.getElementById("fileGrid").classList.remove("list-view");this.classList.add("active");document.getElementById("viewList").classList.remove("active")});document.getElementById("viewList").addEventListener("click",function(){state.view="list";document.getElementById("fileGrid").classList.add("list-view");this.classList.add("active");document.getElementById("viewGrid").classList.remove("active")});var st;document.getElementById("searchInput").addEventListener("input",function(){clearTimeout(st);var q=this.value;st=setTimeout(function(){renderFiles(q)},200)});document.getElementById("btnChatSend").addEventListener("click",sendChatMessage);document.getElementById("chatInput").addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChatMessage()}});document.getElementById("chatInput").addEventListener("input",function(){autoResizeTextarea(this)});document.getElementById("btnChatFile").addEventListener("click",function(){document.getElementById("chatFileInput").click()});document.getElementById("chatFileInput").addEventListener("change",function(){if(this.files.length>0){sendChatFile(this.files[0]);this.value=""}});document.getElementById("btnAddDevice").addEventListener("click",showAddDeviceDialog);document.getElementById("btnCancelAddDevice").addEventListener("click",hideAddDeviceDialog);document.getElementById("addDeviceModal").addEventListener("click",function(e){if(e.target===this)hideAddDeviceDialog()});document.getElementById("btnConfirmAddDevice").addEventListener("click",addManualDevice);document.getElementById("addDeviceIp").addEventListener("keydown",function(e){if(e.key==="Enter")addManualDevice()});setupUpload();setupDeviceNameEdit();window.addEventListener("hashchange",function(){var p=decodeURIComponent(location.hash.slice(1));navigate(p)});if(location.hash)navigate(decodeURIComponent(location.hash.slice(1)));pollDevices();setInterval(pollDevices,2000);setInterval(pollMessages,2000);setInterval(pollTransfers,5000)}
+document.addEventListener("DOMContentLoaded",init);
+</script>
+</body>
+</html>

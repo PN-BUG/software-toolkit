@@ -1,0 +1,12 @@
+{
+  "id": "ai-manager",
+  "name": "AI 管理大师",
+  "description": "查看 Codex 剩余额度与消耗趋势，用悬浮窗监控任务和模型，并在超限时提醒和中断可见任务",
+  "category": "开发/AI",
+  "tags": ["AI", "Codex", "额度", "用量", "预测", "任务", "模型", "悬浮窗", "限制"],
+  "icon": "chart",
+  "author": "SoftwareToolkit",
+  "version": "1.1.0",
+  "kind": "BuiltIn",
+  "path": "ai-manager"
+}

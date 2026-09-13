@@ -1,0 +1,14 @@
+{
+  "id": "mouseinc",
+  "name": "MouseInc",
+  "description": "MouseInc 鼠标增强工具，启动本机已安装的程序",
+  "category": "工具/效率",
+  "tags": [
+    "鼠标",
+    "效率",
+    "MouseInc"
+  ],
+  "kind": "Executable",
+  "path": "MouseInc.exe",
+  "workingDirectory": "."
+}

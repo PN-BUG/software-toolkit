@@ -1,0 +1,12 @@
+{
+  "id": "software-inventory",
+  "name": "软件清单",
+  "description": "扫描设备上安装的软件，选择加入可分享清单，并维护自动或自定义下载链接",
+  "category": "系统/管理",
+  "tags": ["软件", "清单", "已安装", "WinGet", "分享", "下载"],
+  "icon": "list",
+  "author": "SoftwareToolkit",
+  "version": "1.0.0",
+  "kind": "BuiltIn",
+  "path": "software-inventory"
+}

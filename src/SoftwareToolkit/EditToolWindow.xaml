@@ -1,0 +1,153 @@
+<Window x:Class="SoftwareToolkit.EditToolWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SoftwareToolkit"
+        Title="编辑工具" Height="520" Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F0F2F5"
+        FontFamily="Microsoft YaHei UI"
+        WindowStyle="ToolWindow"
+        ShowInTaskbar="False">
+
+    <Window.Resources>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#585B70"/>
+            <Setter Property="Margin" Value="0,0,0,3"/>
+        </Style>
+        <Style x:Key="InputBox" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#D0D4E0"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 标题 -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock x:Name="TitleText" Text="✏️ 编辑工具"
+                       FontSize="20" FontWeight="Bold" Foreground="#1E1E2E"/>
+            <TextBlock Text="配置工具的启动方式和属性" FontSize="12"
+                       Foreground="#6C7086" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- 表单 -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      BorderThickness="0" Margin="0,0,0,8">
+            <StackPanel>
+
+                <!-- 名称 -->
+                <TextBlock Text="工具名称 *" Style="{StaticResource FieldLabel}"/>
+                <Border Style="{StaticResource InputBox}">
+                    <TextBox x:Name="NameBox" FontSize="13" BorderThickness="0"
+                             Background="Transparent" Padding="0"/>
+                </Border>
+
+                <!-- 描述 -->
+                <TextBlock Text="描述" Style="{StaticResource FieldLabel}"/>
+                <Border Style="{StaticResource InputBox}">
+                    <TextBox x:Name="DescBox" FontSize="13" BorderThickness="0"
+                             Background="Transparent" Padding="0"
+                             TextWrapping="Wrap" AcceptsReturn="True"
+                             MaxHeight="60"/>
+                </Border>
+
+                <!-- 分类 -->
+                <TextBlock Text="分类（如 开发/编辑器）" Style="{StaticResource FieldLabel}"/>
+                <Border Style="{StaticResource InputBox}">
+                    <TextBox x:Name="CategoryBox" FontSize="13" BorderThickness="0"
+                             Background="Transparent" Padding="0"/>
+                </Border>
+
+                <!-- 启动类型 -->
+                <TextBlock Text="启动类型" Style="{StaticResource FieldLabel}"/>
+                <Border Style="{StaticResource InputBox}" Padding="6,4">
+                    <ComboBox x:Name="KindCombo" FontSize="13" BorderThickness="0"
+                              Background="Transparent"
+                              SelectionChanged="KindCombo_SelectionChanged">
+                        <ComboBoxItem Content="⚡ 可执行文件 (EXE/BAT/PS1)" Tag="Executable"/>
+                        <ComboBoxItem Content="🌐 网址/URL" Tag="Url"/>
+                        <ComboBoxItem Content="⌨️ 命令 (CMD)" Tag="Command"/>
+                        <ComboBoxItem Content="🧩 插件 DLL" Tag="Plugin"/>
+                        <ComboBoxItem Content="🔨 一键编译 (Build)" Tag="Build"/>
+                        <ComboBoxItem Content="📋 内置工具" Tag="BuiltIn"/>
+                    </ComboBox>
+                </Border>
+
+                <!-- 路径 -->
+                <TextBlock Text="路径 / URL / 命令 *" Style="{StaticResource FieldLabel}"/>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource InputBox}" Margin="0">
+                        <TextBox x:Name="PathBox" FontSize="13" BorderThickness="0"
+                                 Background="Transparent" Padding="0"/>
+                    </Border>
+                    <Button Grid.Column="1" x:Name="BrowseBtn" Content="浏览..."
+                            Margin="8,0,0,0" Padding="12,4" FontSize="12"
+                            Click="Browse_Click"
+                            Style="{StaticResource SecondaryButton}" Height="30"/>
+                </Grid>
+
+                <!-- 参数 -->
+                <TextBlock x:Name="ArgsLabel" Text="命令行参数（可选）" Style="{StaticResource FieldLabel}"/>
+                <Border Style="{StaticResource InputBox}">
+                    <TextBox x:Name="ArgsBox" FontSize="13" BorderThickness="0"
+                             Background="Transparent" Padding="0"/>
+                </Border>
+
+                <!-- 编译配置（仅 Build 类型显示） -->
+                <StackPanel x:Name="BuildConfigPanel" Visibility="Collapsed">
+                    <TextBlock Text="编译配置 (Release/Debug)" Style="{StaticResource FieldLabel}"/>
+                    <Border Style="{StaticResource InputBox}">
+                        <TextBox x:Name="BuildConfigBox" FontSize="13" BorderThickness="0"
+                                 Background="Transparent" Padding="0" Text="Release"/>
+                    </Border>
+                    <TextBlock Text="输出目录（留空使用默认 publish 目录）" Style="{StaticResource FieldLabel}"/>
+                    <Border Style="{StaticResource InputBox}">
+                        <TextBox x:Name="BuildOutputBox" FontSize="13" BorderThickness="0"
+                                 Background="Transparent" Padding="0"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- 标签 -->
+                <TextBlock Text="标签（逗号分隔）" Style="{StaticResource FieldLabel}"/>
+                <Border Style="{StaticResource InputBox}">
+                    <TextBox x:Name="TagsBox" FontSize="13" BorderThickness="0"
+                             Background="Transparent" Padding="0"/>
+                </Border>
+
+                <!-- 选项 -->
+                <Border Background="#F8F9FC" CornerRadius="8" Padding="12,10" Margin="0,0,0,12">
+                    <CheckBox x:Name="RunAsAdminChk" FontSize="13" Foreground="#585B70"
+                              Content="以管理员身份运行"/>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 底栏按钮 -->
+        <Border Grid.Row="2" Padding="0,10,0,0"
+                BorderBrush="#E8EAF0" BorderThickness="0,1,0,0">
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button Content="取消" Padding="16,0" Click="Cancel_Click"
+                        Style="{StaticResource SecondaryButton}"/>
+                <Button x:Name="SaveBtn" Content="保存" Padding="16,0"
+                        Margin="8,0,0,0" Click="Save_Click"
+                        Style="{StaticResource PrimaryButton}"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

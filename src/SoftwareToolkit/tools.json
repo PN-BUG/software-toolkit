@@ -1,0 +1,186 @@
+{
+  "scanDirectories": ["tools"],
+  "tools": [
+    {
+      "id": "notepad",
+      "name": "记事本",
+      "description": "Windows 自带文本编辑器，快速编辑文本文件和笔记",
+      "category": "工具/文本",
+      "tags": ["文本", "编辑", "系统"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\notepad.exe"
+    },
+    {
+      "id": "calc",
+      "name": "计算器",
+      "description": "Windows 计算器，支持标准与科学计算模式",
+      "category": "工具/计算",
+      "tags": ["计算", "数学", "系统"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\calc.exe"
+    },
+    {
+      "id": "cmd",
+      "name": "命令提示符",
+      "description": "Windows 命令行终端，执行 DOS 命令和批处理脚本",
+      "category": "开发/终端",
+      "tags": ["终端", "命令行", "开发"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\cmd.exe"
+    },
+    {
+      "id": "powershell",
+      "name": "PowerShell",
+      "description": "Windows PowerShell 终端，强大的脚本和自动化环境",
+      "category": "开发/终端",
+      "tags": ["终端", "脚本", "开发"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    },
+    {
+      "id": "explorer",
+      "name": "资源管理器",
+      "description": "Windows 文件资源管理器，浏览和管理文件与文件夹",
+      "category": "系统",
+      "tags": ["文件", "系统"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\explorer.exe"
+    },
+    {
+      "id": "mspaint",
+      "name": "画图",
+      "description": "Windows 画图工具，简单的图像编辑和绘图功能",
+      "category": "图形",
+      "tags": ["绘图", "图片", "系统"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\mspaint.exe"
+    },
+    {
+      "id": "regedit",
+      "name": "注册表编辑器",
+      "description": "Windows 注册表编辑器 🛡️ 需要管理员权限",
+      "category": "系统",
+      "tags": ["注册表", "系统", "高级"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\regedit.exe",
+      "runAsAdmin": true
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "description": "代码托管平台 — 浏览仓库、提交代码、协作开发",
+      "category": "开发/协作",
+      "tags": ["代码", "Git", "协作", "Web"],
+      "kind": "Url",
+      "path": "https://github.com"
+    },
+    {
+      "id": "stackoverflow",
+      "name": "Stack Overflow",
+      "description": "开发者问答社区 — 解决编程问题的第一站",
+      "category": "开发/协作",
+      "tags": ["问答", "社区", "Web"],
+      "kind": "Url",
+      "path": "https://stackoverflow.com"
+    },
+    {
+      "id": "devdocs",
+      "name": "DevDocs",
+      "description": "多语言 API 文档聚合 — 离线可用的技术文档",
+      "category": "开发/文档",
+      "tags": ["文档", "API", "参考"],
+      "kind": "Url",
+      "path": "https://devdocs.io"
+    },
+    {
+      "id": "ping-google",
+      "name": "Ping 谷歌",
+      "description": "测试到谷歌服务器的网络连通性和延迟",
+      "category": "网络/诊断",
+      "tags": ["网络", "诊断", "ping"],
+      "kind": "Command",
+      "path": "ping -t 8.8.8.8"
+    },
+    {
+      "id": "tracert",
+      "name": "路由追踪",
+      "description": "追踪到目标服务器的网络路由路径",
+      "category": "网络/诊断",
+      "tags": ["网络", "诊断", "路由"],
+      "kind": "Command",
+      "path": "tracert google.com"
+    },
+    {
+      "id": "ipconfig",
+      "name": "IP 配置",
+      "description": "查看本机网络配置信息（IP 地址、网关、DNS）",
+      "category": "网络",
+      "tags": ["网络", "IP", "配置"],
+      "kind": "Command",
+      "path": "ipconfig /all"
+    },
+    {
+      "id": "code",
+      "name": "VS Code",
+      "description": "Visual Studio Code — 轻量级但强大的代码编辑器",
+      "category": "开发/编辑器",
+      "tags": ["编辑器", "代码", "开发"],
+      "kind": "Executable",
+      "path": "code"
+    },
+    {
+      "id": "snippingtool",
+      "name": "截图工具",
+      "description": "Windows 截图工具，支持矩形、窗口和全屏截图",
+      "category": "图形",
+      "tags": ["截图", "图片", "工具"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\SnippingTool.exe"
+    },
+    {
+      "id": "taskmgr",
+      "name": "任务管理器",
+      "description": "Windows 任务管理器 — 查看进程、性能和系统资源",
+      "category": "系统",
+      "tags": ["系统", "进程", "性能", "监控"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\taskmgr.exe"
+    },
+    {
+      "id": "charmap",
+      "name": "字符映射表",
+      "description": "查看和复制特殊字符、Unicode 符号和表情",
+      "category": "工具",
+      "tags": ["字符", "Unicode", "特殊符号"],
+      "kind": "Executable",
+      "path": "%windir%\\System32\\charmap.exe"
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "description": "全球最大的视频分享平台 — 教程、音乐、娱乐",
+      "category": "娱乐",
+      "tags": ["视频", "音乐", "娱乐", "Web"],
+      "kind": "Url",
+      "path": "https://youtube.com"
+    },
+    {
+      "id": "bilibili",
+      "name": "Bilibili",
+      "description": "哔哩哔哩 — 中国年轻世代高度聚集的文化社区和视频平台",
+      "category": "娱乐",
+      "tags": ["视频", "动漫", "社区", "Web"],
+      "kind": "Url",
+      "path": "https://bilibili.com"
+    },
+    {
+      "id": "deepl",
+      "name": "DeepL 翻译",
+      "description": "AI 驱动的精准翻译工具，支持多语言互译",
+      "category": "工具/文本",
+      "tags": ["翻译", "语言", "AI"],
+      "kind": "Url",
+      "path": "https://deepl.com/translator"
+    }
+  ]
+}

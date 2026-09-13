@@ -1,0 +1,13 @@
+{
+  "id": "task-scheduler",
+  "name": "定时任务管理器",
+  "description": "创建和管理开机、登录、每日或循环执行的 Windows 定时任务",
+  "category": "系统/自动化",
+  "tags": ["定时任务", "开机自启", "自动化", "计划任务"],
+  "icon": "clock",
+  "author": "SoftwareToolkit",
+  "version": "1.0.0",
+  "kind": "Executable",
+  "path": "task-scheduler.bat",
+  "runAsAdmin": true
+}
