@@ -20,6 +20,17 @@ public sealed class ToolLauncher
     /// <summary>Windows 系统目录 (如 C:\Windows\System32)</summary>
     private static readonly string SystemDir = Environment.GetFolderPath(Environment.SpecialFolder.System);
 
+    /// <summary>已知的系统工具名 → 在 System32 下的完整文件名</summary>
+    private static readonly HashSet<string> KnownSystemExes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "notepad.exe", "calc.exe", "cmd.exe", "powershell.exe",
+        "explorer.exe", "mspaint.exe", "regedit.exe", "taskmgr.exe",
+        "charmap.exe", "SnippingTool.exe", "control.exe",
+        "msconfig.exe", "resmon.exe", "perfmon.exe",
+        "osk.exe", "magnify.exe", "narrator.exe",
+        "utilman.exe", "cleanmgr.exe", "dfrgui.exe"
+    };
+
     private readonly BuildService _buildService = new();
 
     public ToolLauncher(ConfigLoader configLoader, IntPtr ownerHandle)
@@ -97,55 +108,22 @@ public sealed class ToolLauncher
     }
 
     /// <summary>
-    /// 解析可执行文件路径：配置目录优先，然后查找 Windows 目录和 PATH。
+    /// 解析路径，对 Windows 系统工具自动补全 System32 路径，并展开环境变量。
     /// </summary>
     private static string ResolveSystemToolPath(string path, string? sourceFile)
     {
+        // 展开环境变量（如 %windir%）
         path = Environment.ExpandEnvironmentVariables(path);
 
-        if (Path.IsPathRooted(path))
+        var fileName = Path.GetFileName(path);
+        // 如果是已知的系统工具且没有目录路径 → 补全 System32 路径
+        if (KnownSystemExes.Contains(fileName) && path.IndexOfAny(new[] { '\\', '/' }) < 0)
         {
-            if (File.Exists(path)) return Path.GetFullPath(path);
-            return FindExecutable(Path.GetFileName(path)) ?? path;
+            var systemPath = Path.Combine(SystemDir, fileName);
+            if (File.Exists(systemPath))
+                return systemPath;
         }
-
-        if (path.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) >= 0)
-            return ResolvePath(path, sourceFile);
-
-        var localPath = ResolvePath(path, sourceFile);
-        if (File.Exists(localPath)) return localPath;
-
-        return FindExecutable(path) ?? path;
-    }
-
-    private static string? FindExecutable(string fileName)
-    {
-        if (string.IsNullOrWhiteSpace(fileName)) return null;
-
-        var extensions = Path.HasExtension(fileName)
-            ? new[] { string.Empty }
-            : (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT;.COM")
-                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var windowsDir = Path.GetDirectoryName(SystemDir);
-        var directories = new List<string> { SystemDir };
-        if (!string.IsNullOrWhiteSpace(windowsDir)) directories.Add(windowsDir);
-        directories.AddRange((Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(directory => directory.Trim('"')));
-
-        foreach (var directory in directories.Distinct(StringComparer.OrdinalIgnoreCase))
-        foreach (var extension in extensions)
-        {
-            try
-            {
-                var candidate = Path.Combine(directory, fileName + extension);
-                if (File.Exists(candidate)) return Path.GetFullPath(candidate);
-            }
-            catch (ArgumentException) { }
-            catch (NotSupportedException) { }
-        }
-
-        return null;
+        return ResolvePath(path, sourceFile);
     }
 
     /// <summary>
@@ -204,9 +182,7 @@ public sealed class ToolLauncher
     {
         var workDir = !string.IsNullOrWhiteSpace(tool.WorkingDirectory)
             ? ResolvePath(tool.WorkingDirectory, tool.SourceFile)
-            : !string.IsNullOrWhiteSpace(tool.SourceFile)
-                ? Path.GetDirectoryName(Path.GetFullPath(tool.SourceFile)) ?? AppContext.BaseDirectory
-                : AppContext.BaseDirectory;
+            : Environment.CurrentDirectory;
 
         Process.Start(new ProcessStartInfo
         {
@@ -232,13 +208,10 @@ public sealed class ToolLauncher
     /// <summary>打开随主程序发布的原生工具窗口。</summary>
     private static void LaunchBuiltIn(ToolDefinition tool)
     {
-        // Path.GetFileName 兼容旧版本 ConfigLoader 已经错误展开成绝对路径的配置。
-        var builtInId = Path.GetFileName(tool.Path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        Window window = builtInId.ToLowerInvariant() switch
+        Window window = tool.Path.ToLowerInvariant() switch
         {
             "software-inventory" => new SoftwareInventoryWindow(),
-            "ai-manager" => new AiManagerWindow(),
-            _ => throw new NotSupportedException($"未知的内置工具: {builtInId}")
+            _ => throw new NotSupportedException($"未知的内置工具: {tool.Path}")
         };
         window.Owner = Application.Current.MainWindow;
         window.Show();

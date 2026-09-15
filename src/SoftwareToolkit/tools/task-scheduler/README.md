@@ -1,7 +1,5 @@
 # 定时任务管理器
 
-[返回项目主页](https://github.com/PN-BUG/software-toolkit)
-
 用于创建和管理 Windows 计划任务。任务统一保存在任务计划程序的 `\SoftwareToolkit\` 文件夹中，关闭 SoftwareToolkit 后仍会由 Windows 执行。
 
 - 开机时（以 SYSTEM 身份运行，无需用户登录）

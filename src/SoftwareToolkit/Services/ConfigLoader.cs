@@ -113,9 +113,8 @@ public sealed class ConfigLoader
                 if (string.IsNullOrWhiteSpace(tool.Id))
                     tool.Id = Path.GetFileName(subDir);
 
-                // BuiltIn 的 path 是逻辑标识（如 ai-manager），不是文件路径。
-                if (tool.Kind != ToolKind.BuiltIn &&
-                    !string.IsNullOrWhiteSpace(tool.Path) && !System.IO.Path.IsPathRooted(tool.Path))
+                // 自动补全路径(相对路径 → 绝对路径)
+                if (!string.IsNullOrWhiteSpace(tool.Path) && !System.IO.Path.IsPathRooted(tool.Path))
                     tool.Path = System.IO.Path.GetFullPath(System.IO.Path.Combine(subDir, tool.Path));
 
                 // 自动补全图标路径

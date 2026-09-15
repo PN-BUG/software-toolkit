@@ -82,7 +82,6 @@ public partial class MainWindow : Window
         PreviewKeyDown += Window_PreviewKeyDown;
         Closed += (_, _) =>
         {
-            LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
             _searchTimer.Stop();
             UnregisterHotKey();
             TrayIcon.Visible = false;
@@ -96,7 +95,6 @@ public partial class MainWindow : Window
         _toolLauncher = new ToolLauncher(_configLoader, IntPtr.Zero);
         var trayMenu = new System.Windows.Forms.ContextMenuStrip();
         trayMenu.Items.Add("显示主窗口", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
-        trayMenu.Items.Add("AI 悬浮监控", null, (_, _) => Dispatcher.Invoke(AiFloatingWindow.ShowOrActivate));
         trayMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         trayMenu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(() => TrayExit_Click(this, new RoutedEventArgs())));
         TrayIcon.ContextMenuStrip = trayMenu;
@@ -127,9 +125,6 @@ public partial class MainWindow : Window
             var hwnd = new WindowInteropHelper(this).Handle;
             SetTaskbarIcon(hwnd);
         };
-
-        LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
-        ApplyLocalization(reloadTools: false);
     }
 
     // ====== 窗口事件 ======
@@ -142,7 +137,6 @@ public partial class MainWindow : Window
         LoadTools();
         BuildCategoryTree();
         RefreshToolCards();
-        LocalizationService.Apply(this);
         RegisterHotKey();
     }
 
@@ -184,24 +178,6 @@ public partial class MainWindow : Window
         WpfApplication.Current.Shutdown();
     }
 
-    private void LocalizationService_LanguageChanged(object? sender, EventArgs e) => ApplyLocalization(reloadTools: true);
-
-    private void ApplyLocalization(bool reloadTools)
-    {
-        LocalizationService.Apply(this);
-        if (TrayIcon.ContextMenuStrip is { Items.Count: >= 4 } menu)
-        {
-            menu.Items[0].Text = LocalizationService.T("显示主窗口");
-            menu.Items[1].Text = LocalizationService.T("AI 悬浮监控");
-            menu.Items[3].Text = LocalizationService.T("退出");
-        }
-        if (!reloadTools || !IsLoaded) return;
-        LoadTools();
-        BuildCategoryTree();
-        ApplyFilters();
-        LocalizationService.Apply(this);
-    }
-
     // ====== 数据加载 ======
 
     private void LoadTools()
@@ -211,9 +187,7 @@ public partial class MainWindow : Window
         foreach (var t in _allTools)
             _filteredTools.Add(t);
 
-        StatusText.Text = LocalizationService.IsEnglish
-            ? $"Loaded {_allTools.Count} tools"
-            : $"已加载 {_allTools.Count} 个工具";
+        StatusText.Text = $"已加载 {_allTools.Count} 个工具";
     }
 
     private void BuildCategoryTree()
@@ -222,9 +196,9 @@ public partial class MainWindow : Window
         CategoryTree.Items.Clear();
 
         // 重新添加静态条目
-        AddStaticTreeItem("📋", LocalizationService.T("全部工具"), "__all__", true);
-        AddStaticTreeItem("⭐", LocalizationService.T("我的收藏"), "__pinned__");
-        AddStaticTreeItem("🕐", LocalizationService.T("最近使用"), "__recent__");
+        AddStaticTreeItem("📋", "全部工具", "__all__", true);
+        AddStaticTreeItem("⭐", "我的收藏", "__pinned__");
+        AddStaticTreeItem("🕐", "最近使用", "__recent__");
 
         // 分隔线
         CategoryTree.Items.Add(new Separator
@@ -297,7 +271,6 @@ public partial class MainWindow : Window
     private TreeViewItem CreateCategoryItem(string key, SortedDictionary<string, HashSet<string>> categories)
     {
         var name = key.Contains('/') ? key[(key.LastIndexOf('/') + 1)..] : key;
-        var displayName = LocalizationService.T(name);
         var count = _allTools.Count(t =>
             t.Category == key || t.Category.StartsWith(key + "/"));
 
@@ -326,7 +299,7 @@ public partial class MainWindow : Window
 
         var nameText = new TextBlock
         {
-            Text = $"{displayName} ({count})",
+            Text = $"{name} ({count})",
             FontSize = 13,
             VerticalAlignment = WpfVerticalAlignment.Center
         };
@@ -369,9 +342,7 @@ public partial class MainWindow : Window
             Tag = key
         };
 
-        var contextMenu = CreateWorkbenchMenu(LocalizationService.IsEnglish
-            ? $"{displayName} · {count} tools"
-            : $"{name} · {count} 个工具");
+        var contextMenu = CreateWorkbenchMenu($"{name} · {count} 个工具");
         contextMenu.Items.Add(MenuAction("查看此分类", "\uE8A9", () => item.IsSelected = true));
         contextMenu.Items.Add(new Separator());
         contextMenu.Items.Add(MenuAction("重命名分类…", "\uE70F", () => RenameCategory(key)));
@@ -469,16 +440,10 @@ public partial class MainWindow : Window
         // 更新按钮状态
         if (sender is WpfButton btn)
         {
-            btn.Content = _isListView
-                ? (LocalizationService.IsEnglish ? "Card view" : "切换卡片")
-                : LocalizationService.T("切换列表");
-            btn.ToolTip = LocalizationService.IsEnglish
-                ? (_isListView ? "Switch to card view" : "Switch to list view")
-                : (_isListView ? "切换到卡片布局" : "切换到列表布局");
+            btn.Content = _isListView ? "切换卡片" : "切换列表";
+            btn.ToolTip = _isListView ? "切换到卡片布局" : "切换到列表布局";
         }
-        StatusText.Text = LocalizationService.IsEnglish
-            ? (_isListView ? "Switched to list view" : "Switched to card view")
-            : (_isListView ? "已切换到列表布局" : "已切换到卡片布局");
+        StatusText.Text = _isListView ? "已切换到列表布局" : "已切换到卡片布局";
     }
 
 
@@ -781,9 +746,7 @@ public partial class MainWindow : Window
         LoadTools();
         BuildCategoryTree();
         ApplyFilters();
-        StatusText.Text = LocalizationService.IsEnglish
-            ? $"Refreshed — {_allTools.Count} tools"
-            : $"已刷新 - {_allTools.Count} 个工具";
+        StatusText.Text = $"已刷新 - {_allTools.Count} 个工具";
     }
 
     private void SettingsBtn_Click(object sender, RoutedEventArgs e)
@@ -1060,34 +1023,28 @@ public partial class MainWindow : Window
         // 更新空状态文本（我的收藏等特殊视图的提示）
         if (EmptySubText != null && !string.IsNullOrEmpty(searchText))
         {
-            EmptySubText.Text = LocalizationService.IsEnglish
-                ? $"No tools match “{searchText}”. Try another keyword or clear the search."
-                : $"没有匹配“{searchText}”的工具，试试其他关键词或清空搜索。";
+            EmptySubText.Text = $"没有匹配“{searchText}”的工具，试试其他关键词或清空搜索。";
         }
         else if (EmptySubText != null && selectedTag == "__pinned__")
         {
-            EmptySubText.Text = LocalizationService.IsEnglish ? "Select ☆ on a tool to keep it here." : "点击工具右上角的 ☆，把常用工具收藏到这里。";
+            EmptySubText.Text = "点击工具右上角的 ☆，把常用工具收藏到这里。";
         }
         else if (EmptySubText != null && selectedTag == "__recent__")
         {
-            EmptySubText.Text = LocalizationService.IsEnglish ? "Launch or double-click a tool and it will appear here." : "点击启动按钮或双击工具，使用记录会显示在这里。";
+            EmptySubText.Text = "点击启动按钮或双击工具，使用记录会显示在这里。";
         }
         else if (EmptySubText != null)
         {
-            EmptySubText.Text = LocalizationService.IsEnglish ? "Drop a file or add a tool, or clear filters to see the full library." : "拖入文件或点击添加工具，也可以清除筛选查看整个工具库。";
+            EmptySubText.Text = "拖入文件或点击添加工具，也可以清除筛选查看整个工具库。";
         }
 
-        StatusText.Text = LocalizationService.IsEnglish
-            ? $"Showing {_filteredTools.Count} / {_allTools.Count} tools"
-            : $"显示 {_filteredTools.Count} / {_allTools.Count} 个工具";
-        ResultCountText.Text = LocalizationService.IsEnglish
-            ? $"{_filteredTools.Count} tools   /   {_allTools.Count(t => t.IsPinned)} favorites   ·   Select for details, double-click to launch"
-            : $"{_filteredTools.Count} 个工具   /   {_allTools.Count(t => t.IsPinned)} 个收藏   ·   选中查看详情，双击快速启动";
+        StatusText.Text = $"显示 {_filteredTools.Count} / {_allTools.Count} 个工具";
+        ResultCountText.Text = $"{_filteredTools.Count} 个工具   /   {_allTools.Count(t => t.IsPinned)} 个收藏   ·   选中查看详情，双击快速启动";
         CollectionTitle.Text = selectedTag switch
         {
-            "__pinned__" => LocalizationService.T("我的收藏"),
-            "__recent__" => LocalizationService.T("最近使用"),
-            null or "__all__" => LocalizationService.T("全部工具"),
+            "__pinned__" => "我的收藏",
+            "__recent__" => "最近使用",
+            null or "__all__" => "全部工具",
             _ => selectedTag.Replace("/", " / ")
         };
     }
@@ -1486,9 +1443,7 @@ public partial class MainWindow : Window
     private void UpdateBatchBar()
     {
         if (BatchCountText == null) return;
-        BatchCountText.Text = LocalizationService.IsEnglish
-            ? $"{_batchSelectedIds.Count} selected"
-            : $"已选择 {_batchSelectedIds.Count} 个";
+        BatchCountText.Text = $"已选择 {_batchSelectedIds.Count} 个";
         BatchPinButton.IsEnabled = BatchDeleteButton.IsEnabled = _batchSelectedIds.Count > 0;
         _syncingBatchSelection = true;
         BatchSelectAllCheck.IsChecked = _batchSelectedIds.Count == _filteredTools.Count && _filteredTools.Count > 0;

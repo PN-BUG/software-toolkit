@@ -83,27 +83,6 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 界面语言 -->
-                <Border Style="{StaticResource CardBox}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="150"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="🌐 界面语言" Style="{StaticResource SectionTitle}" Margin="0,0,0,3"/>
-                            <TextBlock Text="选择应用显示语言，保存后立即生效"
-                                       FontSize="11" Foreground="#9CA0B0"/>
-                        </StackPanel>
-                        <ComboBox x:Name="LanguageCombo" Grid.Column="1" Height="34"
-                                  VerticalContentAlignment="Center" Padding="10,0"
-                                  BorderBrush="#D0D0D0" Background="White">
-                            <ComboBoxItem Content="中文" Tag="zh-CN"/>
-                            <ComboBoxItem Content="English" Tag="en-US"/>
-                        </ComboBox>
-                    </Grid>
-                </Border>
-
                 <!-- 行为 -->
                 <Border Style="{StaticResource CardBox}">
                     <StackPanel>

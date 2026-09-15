@@ -1,4 +1,5 @@
 {
+  "$schema": "https://example.com/tools-schema.json",
   "scanDirectories": ["tools"],
   "tools": [
     {

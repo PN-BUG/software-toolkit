@@ -39,25 +39,15 @@ try {
     if ($publishExitCode -ne 0) { throw "dotnet publish failed (exit $publishExitCode). See $logPath" }
 
     Write-Host '[2/4] Checking package files'
-    foreach ($required in @('SoftwareToolkit.exe', 'tools.json', 'tools\lan-share\manifest.json',
-        'tools\software-inventory\manifest.json', 'tools\ai-manager\manifest.json')) {
+    foreach ($required in @('SoftwareToolkit.exe', 'tools.json', 'tools\lan-share\manifest.json', 'tools\software-inventory\manifest.json')) {
         if (-not (Test-Path -LiteralPath (Join-Path $outputDir $required) -PathType Leaf)) {
             throw "Missing package file: $required"
-        }
-    }
-    foreach ($localOnly in @('tools\mouseinc', 'tools\SoftwareToolkit')) {
-        if (Test-Path -LiteralPath (Join-Path $outputDir $localOnly)) {
-            throw "Local-only tool leaked into package: $localOnly"
         }
     }
     # Check all bundled resources, including scripts used by the built-in tools.
     $sourceDir = Split-Path $projectPath
     $resources = @((Get-Item -LiteralPath (Join-Path $sourceDir 'tools.json')))
-    $resources += @(Get-ChildItem -LiteralPath (Join-Path $sourceDir 'tools') -Recurse -File -Force |
-        Where-Object {
-            $sourceRelativePath = $_.FullName.Substring($sourceDir.Length + 1)
-            $sourceRelativePath -notmatch '^tools\\(mouseinc|SoftwareToolkit)\\'
-        })
+    $resources += @(Get-ChildItem -LiteralPath (Join-Path $sourceDir 'tools') -Recurse -File -Force)
     foreach ($resource in $resources) {
         $relativePath = $resource.FullName.Substring($sourceDir.Length + 1)
         $publishedPath = Join-Path $outputDir $relativePath

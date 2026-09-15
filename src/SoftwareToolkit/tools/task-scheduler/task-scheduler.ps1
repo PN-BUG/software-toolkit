@@ -1,5 +1,6 @@
-Set-StrictMode -Version 2.0
+﻿Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+$validateOnly = $args -contains '-ValidateOnly'
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
@@ -31,8 +32,8 @@ Add-Type -AssemblyName WindowsBase
   </Grid></Border>
   <Border Grid.Row="2" Background="White" CornerRadius="8" Padding="16"><Grid>
    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-   <DockPanel Margin="0,0,0,10"><TextBlock Text="已创建的任务" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/><Button x:Name="RefreshButton" Content="刷新" DockPanel.Dock="Right" HorizontalAlignment="Right" Margin="0"/></DockPanel>
-   <DataGrid x:Name="TaskGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal"><DataGrid.Columns><DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="2*"/><DataGridTextColumn Header="状态" Binding="{Binding State}" Width="*"/><DataGridTextColumn Header="下次运行" Binding="{Binding NextRun}" Width="1.5*"/><DataGridTextColumn Header="上次结果" Binding="{Binding LastResult}" Width="*"/></DataGrid.Columns></DataGrid>
+   <DockPanel Margin="0,0,0,10"><TextBlock Text="SoftwareToolkit 任务（包括 Supabase 保活）" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/><Button x:Name="RefreshButton" Content="刷新" DockPanel.Dock="Right" HorizontalAlignment="Right" Margin="0"/></DockPanel>
+   <DataGrid x:Name="TaskGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal"><DataGrid.Columns><DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="1.5*"/><DataGridTextColumn Header="说明" Binding="{Binding Description}" Width="2*"/><DataGridTextColumn Header="状态" Binding="{Binding State}" Width="*"/><DataGridTextColumn Header="下次运行" Binding="{Binding NextRun}" Width="1.4*"/><DataGridTextColumn Header="上次结果" Binding="{Binding LastResult}" Width="*"/></DataGrid.Columns></DataGrid>
    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0"><Button x:Name="RunButton" Content="立即运行"/><Button x:Name="ToggleButton" Content="启用 / 禁用"/><Button x:Name="DeleteButton" Content="删除" Foreground="#B42318"/></StackPanel>
   </Grid></Border>
   <TextBlock x:Name="StatusText" Grid.Row="3" Text="就绪" Foreground="#667085" Margin="2,10,0,0"/>
@@ -57,7 +58,7 @@ function Refresh-Tasks {
   $items = @(Get-ScheduledTask -TaskPath $taskPath -ErrorAction SilentlyContinue | Sort-Object TaskName | ForEach-Object {
    $info = $_ | Get-ScheduledTaskInfo
    $stateText = switch ([string]$_.State) { 'Ready' {'已启用'} 'Running' {'运行中'} 'Disabled' {'已禁用'} default {[string]$_.State} }
-   [pscustomobject]@{ Name=$_.TaskName; State=$stateText; NextRun=$(if ($info.NextRunTime -and $info.NextRunTime.Year -gt 1900) {$info.NextRunTime.ToString('yyyy-MM-dd HH:mm')} else {'-'}); LastResult=$(if ($info.LastTaskResult -eq 0) {'成功 (0)'} else {[string]$info.LastTaskResult}) }
+   [pscustomobject]@{ Name=$_.TaskName; Description=$_.Description; State=$stateText; NextRun=$(if ($info.NextRunTime -and $info.NextRunTime.Year -gt 1900) {$info.NextRunTime.ToString('yyyy-MM-dd HH:mm')} else {'-'}); LastResult=$(if ($info.LastTaskResult -eq 0) {'成功 (0)'} else {[string]$info.LastTaskResult}) }
   })
   $taskGrid.ItemsSource = $items; Set-Status "共 $($items.Count) 个 SoftwareToolkit 定时任务"
  } catch { Show-Error "读取任务失败：$($_.Exception.Message)" }
@@ -94,5 +95,6 @@ $scheduleBox.Add_SelectionChanged({ $kind=Get-SelectedSchedule; $dailyPanel.Visi
 (Find-Control 'RunButton').Add_Click({if(-not$taskGrid.SelectedItem){Set-Status '请先选择一个任务。' $true;return};try{Start-ScheduledTask -TaskName $taskGrid.SelectedItem.Name -TaskPath $taskPath;Set-Status "已启动：$($taskGrid.SelectedItem.Name)"}catch{Show-Error "运行失败：$($_.Exception.Message)"}})
 (Find-Control 'ToggleButton').Add_Click({if(-not$taskGrid.SelectedItem){Set-Status '请先选择一个任务。' $true;return};try{$name=$taskGrid.SelectedItem.Name;$task=Get-ScheduledTask -TaskName $name -TaskPath $taskPath;if($task.Settings.Enabled){Disable-ScheduledTask -InputObject $task|Out-Null;Set-Status "已禁用：$name"}else{Enable-ScheduledTask -InputObject $task|Out-Null;Set-Status "已启用：$name"};Refresh-Tasks}catch{Show-Error "操作失败：$($_.Exception.Message)"}})
 (Find-Control 'DeleteButton').Add_Click({if(-not$taskGrid.SelectedItem){Set-Status '请先选择一个任务。' $true;return};$name=$taskGrid.SelectedItem.Name;$question='确定删除任务“{0}”吗？' -f $name;if([System.Windows.MessageBox]::Show($window,$question,'确认删除','YesNo','Warning') -ne 'Yes'){return};try{Unregister-ScheduledTask -TaskName $name -TaskPath $taskPath -Confirm:$false;Set-Status "已删除：$name";Refresh-Tasks}catch{Show-Error "删除失败：$($_.Exception.Message)"}})
+if($validateOnly){$window.Close();exit 0}
 Refresh-Tasks
 $window.ShowDialog() | Out-Null

@@ -1,7 +1,5 @@
 # lan-share —— 局域网文件共享工具
 
-[返回项目主页](https://github.com/PN-BUG/software-toolkit)
-
 > 🌐 一键在 PC 上启动 HTTP 文件服务器，让局域网内的安卓手机 / iPhone / 其他 PC 通过浏览器扫码访问，**上传 / 下载 / 浏览** 文件，无需安装任何客户端。
 
 ## ✨ 特性

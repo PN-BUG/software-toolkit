@@ -150,10 +150,6 @@ public sealed class UserState
     /// <summary>开机自动启动</summary>
     [JsonPropertyName("autoStart")]
     public bool AutoStart { get; set; }
-
-    /// <summary>界面语言（zh-CN / en-US）</summary>
-    [JsonPropertyName("language")]
-    public string Language { get; set; } = "zh-CN";
 }
 
 public sealed class ToolUsage

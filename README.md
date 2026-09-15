@@ -4,18 +4,6 @@
 
 SoftwareToolkit 是一个基于 **WPF (.NET 8)** 的桌面工具启动器，支持托盘常驻、全局热键呼出、工具分类搜索、批量操作，以及可扩展的插件体系。
 
-![SoftwareToolkit 主界面：工具分类、搜索、卡片与详情操作](docs/SoftwareToolkit.png)
-
-_主工作台支持分类浏览、实时搜索、卡片与列表布局，以及工具详情操作。_
-
-## 文档导航
-
-- [快速开始](#-快速开始)
-- [基本操作](#运行)
-- [内置工具](#内置工具)
-- [工具与插件配置](docs/TOOLS.md)
-- [构建与发布](docs/BUILD.md)
-
 ---
 
 ## ✨ 功能特性
@@ -27,6 +15,7 @@ _主工作台支持分类浏览、实时搜索、卡片与列表布局，以及�
 - **卡片 / 列表视图** —— 一键切换布局模式
 - **批量操作** —— 批量模式下一次启动多个工具
 - **软件清单** —— 扫描设备安装项，维护可下载、可分享的软件列表
+- **Supabase 保活** —— 多项目保活、DPAPI 加密凭据、Windows 计划任务与日志状态
 - **系统托盘** —— 最小化到托盘，不占任务栏空间
 - **全局热键** —— <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd> 呼出/隐藏主窗口（可在设置中自定义）
 - **使用频率排序** —— 自动记录使用次数，常用工具优先显示
@@ -40,8 +29,7 @@ _主工作台支持分类浏览、实时搜索、卡片与列表布局，以及�
 ```
 SoftwareToolkit/
 ├── build.ps1                     # 一键构建脚本
-├── build.bat                     # 双击打包入口（小体积框架依赖 ZIP）
-├── docs/                         # 构建、工具和插件文档
+├── build.bat                     # 双击打包入口（独立运行 ZIP）
 ├── SoftwareToolkit.sln           # 解决方案
 ├── src/
 │   ├── SoftwareToolkit/          # WPF 主程序
@@ -57,7 +45,6 @@ SoftwareToolkit/
 │   │   └── tools.json            # 主配置文件
 │   └── SoftwareToolkit.Sdk/      # 插件 SDK
 │       └── IToolPlugin.cs        # 插件接口定义
-├── tests/                        # 交互烟雾测试
 └── publish/                      # 构建输出 (已 gitignore)
 ```
 
@@ -67,23 +54,41 @@ SoftwareToolkit/
 
 ### 环境要求
 
-- **Windows 10/11 x64 或 ARM64**
+- **Windows 10/11 x64**
 - **[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)**（8.0.x，与发布架构一致；独立包无需安装）
 - **[.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)**（仅构建时需要）
 
 ### 构建
 
-**双击根目录的 `build.bat`**，默认生成 Release / win-x64 小体积框架依赖 ZIP，并打开输出目录。
+**双击根目录的 `build.bat`**，自动生成 Release / win-x64 独立运行包和 ZIP，成功后打开输出文件夹，结束时保留窗口查看结果。构建机器需要 .NET 8 SDK，生成的独立包无需另装运行时。
 
 ```powershell
-# 小体积框架依赖 ZIP；目标机器需要 .NET 8 Desktop Runtime
+# 一键构建 (Release, win-x64, 框架依赖模式)
+powershell -ExecutionPolicy Bypass -File build.ps1
+
+# 生成便携 ZIP、文件清单及 SHA-256 校验
 powershell -ExecutionPolicy Bypass -File build.ps1 -Zip
 
-# 自包含 ZIP；目标机器无需安装 .NET
+# 打包完成后打开输出文件夹
+powershell -ExecutionPolicy Bypass -File build.ps1 -SelfContained -Zip -OpenOutput
+
+# 包含运行时，适合没有安装 .NET 的机器（体积更大）
 powershell -ExecutionPolicy Bypass -File build.ps1 -SelfContained -Zip
+
+# ARM64 / 调试 / 构建后停留，均可按需指定
+powershell -ExecutionPolicy Bypass -File build.ps1 -Runtime win-arm64 -Configuration Debug -Pause
+
+# 或手动执行
+dotnet publish src\SoftwareToolkit\SoftwareToolkit.csproj -c Release -r win-x64 -o publish -p:SelfContained=false
 ```
 
-当前版本框架依赖 ZIP 约 0.24 MB，自包含 ZIP 约 63 MB。完整参数、输出结构、校验机制和 CI 用法参见[构建与发布](docs/BUILD.md)。
+每次构建输出到独立的 `publish/SoftwareToolkit-架构-模式-时间-随机标识/` 目录，避免旧文件混入，也不会覆盖现有工具配置。默认不等待输入，构建失败返回非零退出码，适合 CI。使用 `-Zip` 时还会生成同名 ZIP 和 `.sha256` 文件。
+
+脚本显示发布、资源校验、清单、压缩四个阶段，并将编译日志保存为输出目录旁的同名 `.log`。打包前逐一校验 `tools.json` 和 `tools/` 文件是否完整且与源码一致；ZIP 包含隐藏文件，压缩完成后才生成正式 `.zip` 文件。命令行自动化请直接使用 `build.ps1`；`build.bat` 会等待按键，传入参数时按指定参数运行脚本。
+
+双击输出目录中的 `SoftwareToolkit.exe` 即可运行，`tools.json` 与 `tools/` 必须保留在它旁边。`package-manifest.json` 记录打包参数及每个有效载荷文件的大小、SHA-256（不包含清单自身）。项目文件统一负责复制资源，不再由脚本重复复制。升级前请备份工具配置与 `%LOCALAPPDATA%/SoftwareToolkit` 用户状态。
+
+默认发布为框架依赖单文件，Release 不携带调试符号，托盘直接使用 .NET 内置 `NotifyIcon`。独立包启用单文件压缩；为了兼容 WPF 和反射插件，禁用裁剪。
 
 ### 运行
 
@@ -97,7 +102,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -SelfContained -Zip
 
 按 `Ctrl+F` 聚焦搜索，`↓` 选中搜索结果，`Enter` 启动工具，`Esc` 清空搜索或退出多选，`F5` 刷新列表。多选时，在工具列表中按空格切换选中、`Ctrl+A` 全选。搜索支持名称、分类、描述与标签，使用 180 ms 防抖。列表布局使用回收式虚拟化；大量工具建议切换列表布局。
 
-## 开发与验证
+### 交互回归检查
 
 ```powershell
 dotnet run --project tests/SoftwareToolkit.Smoke -c Release
@@ -109,32 +114,114 @@ dotnet run --project tests/SoftwareToolkit.Smoke -c Release
 dotnet run --project tests/SoftwareToolkit.Smoke -c Release -- publish/layout-preview.png
 ```
 
-发布包的完整验证流程参见[构建与发布](docs/BUILD.md#验证)。
+---
+
+## 📦 工具配置
+
+### 主配置文件 `tools.json`
+
+```jsonc
+{
+  "scanDirectories": ["tools"],   // 要扫描 manifest 的子目录
+  "tools": [
+    {
+      "id": "notepad",
+      "name": "记事本",
+      "description": "Windows 自带文本编辑器",
+      "category": "工具/文本",
+      "tags": ["文本", "编辑"],
+      "kind": "Executable",        // 启动类型
+      "path": "notepad.exe"        // 可执行文件路径
+    }
+  ]
+}
+```
+
+### 工具类型 (`kind`)
+
+| 类型 | 说明 | `path` 示例 |
+|------|------|------------|
+| `Executable` | 外部可执行文件 (.exe/.bat/.ps1/.py 等) | `notepad.exe` 或 `tools\my-tool\run.bat` |
+| `Url` | URL 或本地 HTML | `https://example.com` 或 `docs/index.html` |
+| `Command` | Shell 命令组 | `echo hello && pause` |
+| `Build` | .NET 项目编译 (dotnet publish) | `..\MyProject.csproj` |
+| `Plugin` | 插件 DLL (实现 IToolPlugin) | `tools\my-plugin\plugin.dll` |
+| `BuiltIn` | 随主程序发布的原生工具 | `software-inventory` |
+
+### 目录扫描 `manifest.json`
+
+在 `tools/<工具名>/manifest.json` 中定义工具，程序启动时自动加载：
+
+```jsonc
+{
+  "name": "我的工具",
+  "description": "通过 manifest 自动加载的工具",
+  "category": "开发/工具",
+  "tags": ["示例"],
+  "kind": "Executable",
+  "path": "run.bat"
+}
+```
 
 ---
 
-## 工具与插件配置
+## � 内置工具
 
-工具可直接写入 `tools.json`，也可放在独立目录中，通过 `tools/<工具名>/manifest.json` 自动发现。支持可执行文件、网址、Shell 命令、.NET 构建、DLL 插件和内置工具。
+### 软件清单 (`software-inventory`)
 
-字段参考、路径规则、完整示例和 `IToolPlugin` 用法统一收录在[工具与插件配置](docs/TOOLS.md)。
+扫描 Windows 的 HKLM/HKCU 32 位与 64 位卸载注册表及当前用户 Store/MSIX 应用，并在 WinGet 可用时自动匹配包 ID。可从设备软件中勾选条目加入个人清单；下载链接默认按注册表官网、Microsoft Store 或 WinGet 安装页自动配置，也可逐项修改并恢复自动值。
+
+清单自动保存到 `%LOCALAPPDATA%\SoftwareToolkit\software-list.json`。支持复制 Markdown 分享文本，以及导出不含安装路径等设备隐私信息的独立 HTML 分享页。扫描的辅助命令设有超时，Store 或 WinGet 不可用时仍会保留注册表扫描结果。
+
+### 局域网文件共享 (`lan-share`)
+
+一键启动局域网文件共享服务，**PC / 安卓 / iOS** 浏览器扫码即可上传下载，无需安装客户端。
+
+**功能亮点：**
+- 📁 文件浏览、上传、下载，支持目录导航
+- 💬 实时聊天，支持发送文件附件
+- 📱 二维码扫码连接，手机端自适应布局
+- 🔍 设备自动发现（UDP 广播）+ 客户端注册
+- 🌙 深色/浅色主题切换
+- ⚡ 零依赖 —— 仅需 Windows 自带的 PowerShell 5.1 + .NET HttpListener
+
+**启动方式：** 在 SoftwareToolkit 中双击“局域网文件共享”卡片、点击其“启动”按钮，或直接运行 `tools/lan-share/lan-share.bat`
+
+**默认端口：** `8088`（可通过 `tools/lan-share/lan-share.bat` 修改参数自定义）
+
+**兼容性：** 任何支持现代浏览器的设备均可访问（Windows / macOS / Linux / Android / iOS）
+
+### 定时任务管理器 (`task-scheduler`)
+
+通过图形界面创建和管理 Windows 计划任务，支持开机时、用户登录时、每天固定时间及按分钟循环执行。任务由 Windows 任务计划程序托管，关闭 SoftwareToolkit 后仍然有效；开机任务可在用户尚未登录时以 SYSTEM 身份运行。
+
+### Supabase 保活 (`supabase-keepalive`)
+
+从独立 SupabaseKeepAliveTool 迁入的多项目保活工具。密码使用 Windows DPAPI 加密保存在当前用户目录，后台任务由 Windows 计划任务按次执行，无需保持网页或主程序开启。保活计划统一注册到 `\SoftwareToolkit\` 任务目录，可直接在“定时任务管理器”中运行、启停或删除。支持导入旧版 JSON、立即测试、每日/间隔计划、状态查看和日志轮转，并拒绝 secret/service_role key。详细的表结构与 RLS 示例见 [`src/SoftwareToolkit/tools/supabase-keepalive/README.md`](src/SoftwareToolkit/tools/supabase-keepalive/README.md)。
 
 ---
 
-## 内置工具
+## �🔌 插件开发
 
-| 工具 | 用途 | 文档 |
-| --- | --- | --- |
-| 软件清单 | 扫描本机软件，维护下载入口并导出分享清单 | [使用说明](src/SoftwareToolkit/tools/software-inventory/README.md) |
-| AI 管理大师 | 查看 Codex 额度、消耗趋势、任务和模型 | [使用说明](src/SoftwareToolkit/tools/ai-manager/README.md) |
-| 局域网文件共享 | 通过浏览器在局域网内传输文件 | [使用说明](src/SoftwareToolkit/tools/lan-share/README.md) |
-| 定时任务管理器 | 创建和管理 Windows 计划任务 | [使用说明](src/SoftwareToolkit/tools/task-scheduler/README.md) |
+引用 `SoftwareToolkit.Sdk` 项目，实现 `IToolPlugin` 接口：
 
----
+```csharp
+using SoftwareToolkit.Sdk;
 
-## 插件开发
+public class MyPlugin : IToolPlugin
+{
+    public string Id => "my-plugin";
+    public string DisplayName => "我的插件";
 
-插件引用 `SoftwareToolkit.Sdk` 并实现 `IToolPlugin`。编译后将 DLL 与资源放入独立工具目录，再在 `manifest.json` 中配置 `"kind": "Plugin"`。接口示例和上下文字段参见[工具与插件配置](docs/TOOLS.md#dll-插件)。
+    public void Launch(IToolContext context)
+    {
+        context.Log("插件已启动");
+        // 弹出自己的窗口或执行任务...
+    }
+}
+```
+
+编译后将 DLL 放入 `tools/<插件名>/` 目录，在 `manifest.json` 中配置 `"kind": "Plugin"` 即可。
 
 ---
 

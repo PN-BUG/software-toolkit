@@ -25,7 +25,6 @@ public partial class SettingsPanel : UserControl
         HotKeyBox.Text = _originalState.HotKey;
         MinimizeToTrayChk.IsChecked = _originalState.MinimizeToTray;
         AutoStartChk.IsChecked = _originalState.AutoStart;
-        SelectLanguage(_originalState.Language);
 
         var version = typeof(SettingsPanel).Assembly.GetName().Version;
         VersionText.Text = version != null
@@ -35,9 +34,6 @@ public partial class SettingsPanel : UserControl
         ConfigPathText.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "SoftwareToolkit", "userstate.json");
-
-        Loaded += SettingsPanel_Loaded;
-        Unloaded += SettingsPanel_Unloaded;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e)
@@ -78,9 +74,7 @@ public partial class SettingsPanel : UserControl
         state.HotKey = hotKey;
         state.MinimizeToTray = MinimizeToTrayChk.IsChecked ?? true;
         state.AutoStart = AutoStartChk.IsChecked ?? false;
-        state.Language = SelectedLanguage();
         _configLoader.SaveUserState(state);
-        LocalizationService.SetLanguage(state.Language);
 
         try
         {
@@ -103,29 +97,10 @@ public partial class SettingsPanel : UserControl
             Debug.WriteLine($"[AutoStart] 注册表操作失败: {ex.Message}");
         }
 
-        WpfMessageBox.Show(LocalizationService.T("设置已保存。"), LocalizationService.T("保存成功"), MessageBoxButton.OK, MessageBoxImage.Information);
+        WpfMessageBox.Show("设置已保存。", "保存成功", MessageBoxButton.OK, MessageBoxImage.Information);
         Saved?.Invoke(this, EventArgs.Empty);
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
-
-    private string SelectedLanguage() =>
-        (LanguageCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? LocalizationService.Chinese;
-
-    private void SelectLanguage(string? language)
-    {
-        LanguageCombo.SelectedIndex = language?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true ? 1 : 0;
-    }
-
-    private void SettingsPanel_Loaded(object sender, RoutedEventArgs e)
-    {
-        LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
-        LocalizationService.Apply(this);
-    }
-
-    private void SettingsPanel_Unloaded(object sender, RoutedEventArgs e) =>
-        LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
-
-    private void LocalizationService_LanguageChanged(object? sender, EventArgs e) => LocalizationService.Apply(this);
 
     private void Uninstall_Click(object sender, RoutedEventArgs e)
     {

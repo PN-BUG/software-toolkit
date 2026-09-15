@@ -29,8 +29,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Developer-machine tools are kept as local templates, never shipped. -->
-    <None Remove="tools\mouseinc\**\*.*;tools\SoftwareToolkit\**\*.*" />
     <None Update="tools.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

@@ -57,20 +57,6 @@ Desktop.ini
 *.cache
 *.pid
 
-# --- Secrets & local state ---
-.env
-.env.*
-!.env.example
-secrets*.json
-credentials*.json
-*.pfx
-*.p12
-*.pem
-*.key
-**/userstate.json
-**/software-list.json
-**/ai-manager.json
-
 # --- OS ---
 .DS_Store
 .AppleDouble

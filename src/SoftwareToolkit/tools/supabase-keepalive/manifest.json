@@ -1,0 +1,13 @@
+{
+  "id": "supabase-keepalive",
+  "name": "Supabase 保活",
+  "description": "安全配置多个 Supabase 项目，立即执行或通过 Windows 计划任务定时保活",
+  "category": "开发/数据库",
+  "tags": ["Supabase", "数据库", "保活", "计划任务", "自动化"],
+  "icon": "database",
+  "author": "SoftwareToolkit",
+  "version": "2.0.0",
+  "kind": "Executable",
+  "path": "supabase-keepalive.bat",
+  "runAsAdmin": false
+}

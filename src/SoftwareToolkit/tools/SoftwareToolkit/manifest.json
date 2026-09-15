@@ -3,7 +3,7 @@
   "description": "一键编译 SoftwareToolkit 到 publish 目录",
   "category": "开发工具",
   "kind": "Build",
-  "path": "..\\..\\SoftwareToolkit.csproj",
+  "path": "..\\SoftwareToolkit.csproj",
   "tags": ["编译", "发布"],
   "arguments": {
     "config": "Release"

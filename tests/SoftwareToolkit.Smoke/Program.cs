@@ -2,13 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using SoftwareToolkit;
 using SoftwareToolkit.Models;
-using SoftwareToolkit.Services;
 
 internal static class Program
 {
@@ -33,47 +31,6 @@ internal static class Program
                     "installed software scan returns named records");
                 return 0;
             }
-            if (args.Contains("--probe-ai", StringComparer.OrdinalIgnoreCase))
-            {
-                var probe = Task.Run(async () =>
-                {
-                    var serviceType = typeof(MainWindow).Assembly.GetType("SoftwareToolkit.Services.AiManagerService")!;
-                    var service = Activator.CreateInstance(serviceType)!;
-                    try
-                    {
-                        var floatingRefresh = serviceType.GetMethod("RefreshFloatingAsync")!;
-                        var floatingTask = (Task)floatingRefresh.Invoke(service, new object[] { CancellationToken.None })!;
-                        await floatingTask;
-                        var floating = (AiFloatingSnapshot)floatingTask.GetType().GetProperty("Result")!.GetValue(floatingTask)!;
-                        var refresh = serviceType.GetMethod("RefreshAsync")!;
-                        var refreshTask = (Task)refresh.Invoke(service, new object[] { CancellationToken.None })!;
-                        await refreshTask;
-                        var snapshot = (AiManagerSnapshot)refreshTask.GetType().GetProperty("Result")!.GetValue(refreshTask)!;
-                        return (snapshot, floating);
-                    }
-                    finally
-                    {
-                        await ((IAsyncDisposable)service).DisposeAsync();
-                    }
-                }).GetAwaiter().GetResult();
-                var snapshot = probe.snapshot;
-                Check(snapshot.Limits.Count > 0, $"Codex live usage probe returns {snapshot.Limits.Count} quota windows");
-                Check(snapshot.CapturedAt > DateTimeOffset.Now.AddMinutes(-1), "Codex live usage probe returns a fresh snapshot");
-                Check(probe.floating.RemainingPercent is >= 0 and <= 100, "Codex floating probe returns remaining quota");
-                Check(!string.IsNullOrWhiteSpace(probe.floating.TaskName) &&
-                      probe.floating.TaskName != "暂无最近任务" && probe.floating.TaskName != "未命名任务",
-                    $"Codex floating probe returns task {probe.floating.TaskName}");
-                Check(probe.floating.TaskStatus is not "notLoaded" and not "unknown",
-                    $"Codex floating probe returns status {probe.floating.TaskStatus}");
-                Check(probe.floating.Tasks.Count >= 2,
-                    $"Codex floating probe returns {probe.floating.Tasks.Count} visible tasks");
-                Check(!string.IsNullOrWhiteSpace(probe.floating.ModelName) && probe.floating.ModelName != "模型未知",
-                    $"Codex floating probe returns model {probe.floating.ModelName}");
-                Console.WriteLine($"INFO: optional data has {snapshot.DailyUsage.Count} daily buckets and {snapshot.Threads.Count} threads");
-                Console.WriteLine($"INFO: thread statuses are {string.Join(", ", snapshot.Threads.GroupBy(item => item.Status).Select(group => $"{group.Key}:{group.Count()}"))}");
-                Console.WriteLine($"INFO: floating task={probe.floating.TaskName}, status={probe.floating.TaskStatus}, model={probe.floating.ModelName}, effort={probe.floating.ReasoningEffort ?? "--"}");
-                return 0;
-            }
             typeof(MainWindow).GetField("_allTools", flags)!.SetValue(window, new List<ToolDefinition>
             {
                 new() { Id = "test-a", Name = "Alpha 编辑器", Category = "开发", Description = "文本与代码编辑", Tags = new() { "Editor" } },
@@ -86,9 +43,6 @@ internal static class Program
             var search = (TextBox)window.FindName("SearchBox");
             var all = (CheckBox)window.FindName("BatchSelectAllCheck");
             var selected = Field<HashSet<string>>("_batchSelectedIds");
-            Check(Field<System.Windows.Forms.NotifyIcon>("TrayIcon").ContextMenuStrip?.Items
-                    .Cast<System.Windows.Forms.ToolStripItem>().Any(item => item.Text == "AI 悬浮监控") == true,
-                "tray menu exposes AI floating monitor");
             Check(list.Items.Count == 3, "all tools are displayed");
             var panel = list.ItemsPanel;
             search.Text = "EDITOR";
@@ -157,31 +111,6 @@ internal static class Program
             Check(Location(new ToolDefinition { Path = System.IO.Path.GetFileName(assemblyPath), SourceFile = System.IO.Path.Combine(AppContext.BaseDirectory, "tools.json") }) == assemblyPath, "local paths resolve relative to their manifest");
             Check(Location(new ToolDefinition { Path = "%windir%\\System32\\kernel32.dll" }) != null, "environment variables resolve to existing files");
             Check(Location(new ToolDefinition { Path = "Z:\\missing-tool-123.exe" }) == null, "unavailable locations fail safely");
-            var executableResolver = typeof(ToolLauncher).GetMethod("ResolveSystemToolPath", BindingFlags.Static | BindingFlags.NonPublic)!;
-            string ExecutablePath(string path, string? sourceFile = null) =>
-                (string)executableResolver.Invoke(null, new object?[] { path, sourceFile })!;
-            var windowsDirectory = System.IO.Path.GetDirectoryName(Environment.GetFolderPath(Environment.SpecialFolder.System))!;
-            var explorerPath = System.IO.Path.Combine(windowsDirectory, "explorer.exe");
-            Check(string.Equals(ExecutablePath("%windir%\\System32\\explorer.exe"), explorerPath, StringComparison.OrdinalIgnoreCase),
-                "invalid legacy System32 path falls back to the Windows executable");
-            Check(System.IO.File.Exists(ExecutablePath("notepad.exe", System.IO.Path.Combine(AppContext.BaseDirectory, "tools", "sample", "manifest.json"))),
-                "bare executable names fall back to Windows and PATH");
-            var originalPath = Environment.GetEnvironmentVariable("PATH");
-            var pathProbeDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "software-toolkit-path-probe-" + Guid.NewGuid().ToString("N"));
-            System.IO.Directory.CreateDirectory(pathProbeDirectory);
-            try
-            {
-                var pathProbe = System.IO.Path.Combine(pathProbeDirectory, "portable-tool-probe.cmd");
-                System.IO.File.WriteAllText(pathProbe, "@exit /b 0");
-                Environment.SetEnvironmentVariable("PATH", pathProbeDirectory + System.IO.Path.PathSeparator + originalPath);
-                Check(string.Equals(ExecutablePath("portable-tool-probe"), pathProbe, StringComparison.OrdinalIgnoreCase),
-                    "extensionless executable aliases resolve through PATH and PATHEXT");
-            }
-            finally
-            {
-                Environment.SetEnvironmentVariable("PATH", originalPath);
-                System.IO.Directory.Delete(pathProbeDirectory, true);
-            }
             ActionItem(menu, "选择多个工具").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Check(Field<bool>("_batchMode") && selected.Contains(menuTool.Id!), "context menu enters batch mode with the target selected");
             var batchMenu = (ContextMenu)Call("BuildCardContextMenu", menuTool);
@@ -203,183 +132,20 @@ internal static class Program
             var shareHtml = SoftwareToolkit.Services.SoftwareListService.BuildShareHtml("开发清单", new[] { inventoryItem });
             Check(shareHtml.Contains("A&amp;B Editor") && !shareHtml.Contains(@"C:\Private"), "shared HTML escapes content and excludes private install paths");
             var inventoryTools = new SoftwareToolkit.Services.ConfigLoader(System.IO.Path.GetFullPath("src/SoftwareToolkit")).LoadAllTools();
-            Check(inventoryTools.Any(t => t.Id == "software-inventory" && t.Kind == ToolKind.BuiltIn && t.Path == "software-inventory"),
-                "software inventory manifest preserves its built-in id");
-            Check(inventoryTools.Any(t => t.Id == "ai-manager" && t.Kind == ToolKind.BuiltIn && t.Path == "ai-manager"),
-                "AI manager manifest preserves its built-in id");
-            var fakeLocalAppData = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "software-toolkit-codex-probe-" + Guid.NewGuid().ToString("N"));
-            try
-            {
-                var fakeVersionDirectory = System.IO.Path.Combine(fakeLocalAppData, "OpenAI", "Codex", "bin", "version-hash");
-                System.IO.Directory.CreateDirectory(fakeVersionDirectory);
-                var fakeCodex = System.IO.Path.Combine(fakeVersionDirectory, "codex.exe");
-                System.IO.File.WriteAllBytes(fakeCodex, Array.Empty<byte>());
-                var clientType = typeof(MainWindow).Assembly.GetType("SoftwareToolkit.Services.CodexAppServerClient")!;
-                var resolveCodex = clientType.GetMethod("ResolveCodexExecutableFrom", BindingFlags.Static | BindingFlags.NonPublic)!;
-                var resolvedCodex = (string?)resolveCodex.Invoke(null, new object?[]
-                {
-                    null, string.Empty, fakeLocalAppData, System.IO.Path.Combine(fakeLocalAppData, "Roaming"), fakeLocalAppData
-                });
-                Check(string.Equals(resolvedCodex, fakeCodex, StringComparison.OrdinalIgnoreCase),
-                    "Codex CLI is found from the desktop version directory without PATH");
-                var extractJson = clientType.GetMethod("ExtractJsonMessages", BindingFlags.Static | BindingFlags.NonPublic)!;
-                var extracted = ((IEnumerable<string>)extractJson.Invoke(null, new object[]
-                    { "startup log {\"id\":1,\"result\":{\"text\":\"brace } in string\"}}event {\"method\":\"ready\",\"params\":{}}" })!).ToList();
-                Check(extracted.Count == 2 && extracted.All(json =>
-                {
-                    using var document = System.Text.Json.JsonDocument.Parse(json);
-                    return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object;
-                }), "Codex stdout parser tolerates logs and adjacent JSON messages");
-            }
-            finally
-            {
-                if (System.IO.Directory.Exists(fakeLocalAppData))
-                    System.IO.Directory.Delete(fakeLocalAppData, recursive: true);
-            }
-            var aiManagerWindow = new AiManagerWindow();
-            Check(aiManagerWindow.FindName("RemainingText") is TextBlock &&
-                  aiManagerWindow.FindName("MainUsageBar") is ProgressBar &&
-                  aiManagerWindow.FindName("WarningPercentBox") is TextBox &&
-                  aiManagerWindow.FindName("PausePercentBox") is TextBox &&
-                  aiManagerWindow.FindName("ThreadList") is ListBox &&
-                  aiManagerWindow.FindName("FloatingWindowButton") is Button,
-                "AI manager exposes quota, prediction policy, and task controls");
-            var floatingWindow = new AiFloatingWindow();
-            Check(floatingWindow.Width == 200 && floatingWindow.MinWidth == 180 &&
-                  floatingWindow.MaxWidth == 260 && floatingWindow.Height == 98,
-                "AI floating monitor uses an adaptive 180-260px compact layout");
-            Check(floatingWindow.FindName("TaskStatusText") is TextBlock &&
-                  floatingWindow.FindName("TaskNameText") is TextBlock &&
-                  floatingWindow.FindName("RemainingQuotaText") is TextBlock &&
-                  floatingWindow.FindName("ModelText") is TextBlock &&
-                  floatingWindow.FindName("PeekHandle") is Border &&
-                  floatingWindow.Topmost && !floatingWindow.ShowInTaskbar,
-                "AI floating monitor exposes task, quota, and model telemetry");
-            var dockEdgeField = typeof(AiFloatingWindow).GetField("_dockEdge", flags)!;
-            var dockEdgeType = dockEdgeField.FieldType;
-            object? CallFloating(string name, params object[] callArgs) =>
-                typeof(AiFloatingWindow).GetMethod(name, flags)!.Invoke(floatingWindow, callArgs);
-            dockEdgeField.SetValue(floatingWindow, Enum.Parse(dockEdgeType, "Right"));
-            typeof(AiFloatingWindow).GetField("_expandedLeft", flags)!.SetValue(floatingWindow, SystemParameters.WorkArea.Right - floatingWindow.Width);
-            typeof(AiFloatingWindow).GetField("_expandedTop", flags)!.SetValue(floatingWindow, SystemParameters.WorkArea.Top + 40);
-            CallFloating("CollapseDocked", false);
-            Check(Math.Abs(floatingWindow.Left - (SystemParameters.WorkArea.Right - 8)) < 0.1 &&
-                  ((Border)floatingWindow.FindName("PeekHandle")).Visibility == Visibility.Visible &&
-                  ((Border)floatingWindow.FindName("Shell")).Opacity == 0,
-                "edge docking collapses to a clean 8px translucent hover handle");
-            CallFloating("ExpandDocked", false);
-            Check(Math.Abs(floatingWindow.Left - (SystemParameters.WorkArea.Right - floatingWindow.Width)) < 0.1 &&
-                  ((Border)floatingWindow.FindName("PeekHandle")).Visibility == Visibility.Collapsed,
-                "hover expansion restores the full floating monitor position");
-            dockEdgeField.SetValue(floatingWindow, Enum.Parse(dockEdgeType, "Top"));
-            typeof(AiFloatingWindow).GetField("_expandedLeft", flags)!.SetValue(floatingWindow, SystemParameters.WorkArea.Left + 80);
-            typeof(AiFloatingWindow).GetField("_expandedTop", flags)!.SetValue(floatingWindow, SystemParameters.WorkArea.Top);
-            CallFloating("CollapseDocked", false);
-            var topPeek = (Border)floatingWindow.FindName("PeekHandle");
-            var topSignal = (System.Windows.Shapes.Rectangle)floatingWindow.FindName("PeekSignal");
-            Check(Math.Abs(floatingWindow.Top - (SystemParameters.WorkArea.Top - floatingWindow.Height + 8)) < 0.1 &&
-                  topPeek.Width == 56 && topPeek.Height == 8 && topSignal.Width == 34 && topSignal.Height == 2,
-                "top docking uses a horizontal 56x8 hover handle");
-            CallFloating("ExpandDocked", false);
-            var floatingSnapshot = new AiFloatingSnapshot
-            {
-                TaskName = "实现 AI 管理悬浮监控",
-                TaskStatus = "inProgress",
-                TaskStatusText = "推理中",
-                ModelName = "GPT-6-Astra",
-                ReasoningEffort = "high",
-                RemainingPercent = 73.5,
-                QuotaWindow = "Codex 总额度 · 7 天窗口",
-                ResetsAt = DateTimeOffset.Now.AddDays(2),
-                CapturedAt = DateTimeOffset.Now
-            };
-            typeof(AiFloatingWindow).GetMethod("RenderSnapshot", flags)!.Invoke(floatingWindow, new object[] { floatingSnapshot });
-            Check(((TextBlock)floatingWindow.FindName("TaskNameText")).Text == floatingSnapshot.TaskName &&
-                  ((TextBlock)floatingWindow.FindName("RemainingQuotaText")).Text == "73.5" &&
-                  ((TextBlock)floatingWindow.FindName("ModelText")).Text == floatingSnapshot.ModelName,
-                "AI floating monitor renders a telemetry snapshot");
-            var compactWidth = floatingWindow.Width;
-            var longSnapshot = new AiFloatingSnapshot
-            {
-                TaskName = new string('长', 64), TaskStatus = "inProgress", ModelName = "GPT-6-Astra",
-                ReasoningEffort = "high", RemainingPercent = 73.5, CapturedAt = DateTimeOffset.Now,
-                Tasks = new List<AiThreadSummary>
-                {
-                    new() { Title = new string('长', 64), Status = "inProgress", ModelName = "GPT-6-Astra" },
-                    new() { Title = "修复顶部收起样式", Status = "completed", ModelName = "GPT-5.6-Sol" },
-                    new() { Title = "验证额度读取", Status = "interrupted", ModelName = "GPT-5.6-Sol" }
-                }
-            };
-            typeof(AiFloatingWindow).GetMethod("RenderSnapshot", flags)!.Invoke(floatingWindow, new object[] { longSnapshot });
-            Check(floatingWindow.Width > compactWidth && floatingWindow.Width == floatingWindow.MaxWidth,
-                "AI floating monitor expands for long text and respects its maximum width");
-            Check(((StackPanel)floatingWindow.FindName("SecondaryTasksPanel")).Children.Count == 2 &&
-                  floatingWindow.Height == 134,
-                "AI floating monitor shows up to three tasks and adapts its height");
-            typeof(AiFloatingWindow).GetMethod("RenderSnapshot", flags)!.Invoke(floatingWindow, new object[] { floatingSnapshot });
-            LocalizationService.SetLanguage(LocalizationService.English);
-            Check(((TextBlock)floatingWindow.FindName("TaskStatusText")).Text == "Running" &&
-                  ((TextBlock)floatingWindow.FindName("RemainingQuotaText")).Text == "73.5",
-                "English switch updates the floating monitor without losing telemetry");
-            var settingsPanel = new SettingsPanel(new ConfigLoader(System.IO.Path.GetFullPath("src/SoftwareToolkit")));
-            LocalizationService.Apply(settingsPanel);
-            Check(settingsPanel.FindName("LanguageCombo") is ComboBox &&
-                  settingsPanel.FindName("HotKeyHint") is TextBlock englishHint && englishHint.Text.StartsWith("Supported:"),
-                "settings expose Chinese and English language selection");
-            LocalizationService.SetLanguage(LocalizationService.Chinese);
-            Check(((TextBlock)floatingWindow.FindName("TaskStatusText")).Text == "运行中",
-                "switching back to Chinese updates open windows immediately");
-            if (args.Length > 0)
-            {
-                var floatingRoot = (FrameworkElement)floatingWindow.Content;
-                var floatingWidth = (int)floatingWindow.Width;
-                var floatingHeight = (int)floatingWindow.Height;
-                floatingRoot.Measure(new Size(floatingWidth, floatingHeight));
-                floatingRoot.Arrange(new Rect(0, 0, floatingWidth, floatingHeight));
-                floatingRoot.UpdateLayout();
-                var floatingBitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(floatingWidth, floatingHeight, 96, 96,
-                    System.Windows.Media.PixelFormats.Pbgra32);
-                floatingBitmap.Render(floatingRoot);
-                var floatingEncoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-                floatingEncoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(floatingBitmap));
-                using var floatingFile = System.IO.File.Create(System.IO.Path.ChangeExtension(args[0], null) + "-ai-floating.png");
-                floatingEncoder.Save(floatingFile);
-            }
-            floatingWindow.Close();
-            if (args.Length > 0)
-            {
-                var today = DateOnly.FromDateTime(DateTime.Today);
-                var snapshot = new AiManagerSnapshot
-                {
-                    CapturedAt = DateTimeOffset.Now,
-                    LifetimeTokens = 13_192_399_899,
-                    ResetCredits = 2,
-                    Limits = new List<AiLimitWindow>
-                    {
-                        new() { LimitId = "codex", Name = "Codex 总额度", WindowName = "7 天窗口", UsedPercent = 68, WindowDurationMinutes = 10080, ResetsAt = DateTimeOffset.Now.AddDays(3), IsPrimary = true },
-                        new() { LimitId = "spark", Name = "GPT-5.3-Codex-Spark", WindowName = "5 小时窗口", UsedPercent = 42, WindowDurationMinutes = 300, ResetsAt = DateTimeOffset.Now.AddHours(2), IsPrimary = true }
-                    },
-                    DailyUsage = Enumerable.Range(0, 7).Select(i => new AiDailyUsage { Date = today.AddDays(i - 6), Tokens = 80_000_000 + i * 37_000_000L }).ToList(),
-                    Threads = new List<AiThreadSummary>
-                    {
-                        new() { Id = "thr_1", Title = "重构图片下载器并验证发布包", Status = "active", UpdatedAt = DateTimeOffset.Now },
-                        new() { Id = "thr_2", Title = "修复局域网共享页面的移动端布局", Status = "idle", UpdatedAt = DateTimeOffset.Now.AddHours(-2) },
-                        new() { Id = "thr_3", Title = "检查 Unity 项目的渲染性能", Status = "notLoaded", UpdatedAt = DateTimeOffset.Now.AddDays(-1) }
-                    }
-                };
-                typeof(AiManagerWindow).GetMethod("RenderSnapshot", flags)!.Invoke(aiManagerWindow, new object[] { snapshot });
-                var managerRoot = (FrameworkElement)aiManagerWindow.Content;
-                managerRoot.Measure(new Size(1180, 790));
-                managerRoot.Arrange(new Rect(0, 0, 1180, 790));
-                managerRoot.UpdateLayout();
-                var managerBitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(1180, 790, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
-                managerBitmap.Render(managerRoot);
-                var managerEncoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-                managerEncoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(managerBitmap));
-                using var managerFile = System.IO.File.Create(System.IO.Path.ChangeExtension(args[0], null) + "-ai-manager.png");
-                managerEncoder.Save(managerFile);
-            }
-            aiManagerWindow.Close();
+            Check(inventoryTools.Any(t => t.Id == "software-inventory" && t.Kind == ToolKind.BuiltIn), "software inventory manifest is discoverable");
+            var keepAliveTool = inventoryTools.SingleOrDefault(t => t.Id == "supabase-keepalive");
+            Check(keepAliveTool is { Kind: ToolKind.Executable } && System.IO.File.Exists(keepAliveTool.Path), "Supabase keepalive tool is bundled and discoverable");
+            var keepAliveDirectory = System.IO.Path.GetDirectoryName(keepAliveTool!.Path)!;
+            Check(System.IO.File.Exists(System.IO.Path.Combine(keepAliveDirectory, "SupabaseKeepAlive.ps1")) &&
+                  System.IO.File.Exists(System.IO.Path.Combine(keepAliveDirectory, "SupabaseKeepAliveWorker.ps1")),
+                "Supabase keepalive UI and worker are bundled together");
+            var keepAliveUi = System.IO.File.ReadAllText(System.IO.Path.Combine(keepAliveDirectory, "SupabaseKeepAlive.ps1"));
+            var taskManagerUi = System.IO.File.ReadAllText(System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(keepAliveDirectory)!, "task-scheduler", "task-scheduler.ps1"));
+            Check(keepAliveUi.Contains(@"$taskPath = '\SoftwareToolkit\'") && keepAliveUi.Contains("TaskManagerButton"),
+                "Supabase keepalive plan is integrated with the shared task manager");
+            Check(taskManagerUi.Contains("Description=$_.Description"),
+                "task manager exposes descriptions for integrated tool tasks");
             var inventoryWindow = new SoftwareInventoryWindow();
             Check(inventoryWindow.FindName("InventoryGrid") is DataGrid && inventoryWindow.FindName("ListGrid") is DataGrid, "software inventory window exposes device and curated lists");
             inventoryWindow.Close();

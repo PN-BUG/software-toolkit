@@ -28,7 +28,6 @@ public partial class EditToolWindow : Window
         BrowseBtn.Visibility = Visibility.Collapsed;
 
         PrefillFromFile(dropFilePath);
-        HookLocalization();
     }
 
     /// <summary>编辑已有工具</summary>
@@ -44,7 +43,6 @@ public partial class EditToolWindow : Window
         BrowseBtn.Visibility = tool.Kind == ToolKind.Executable ? Visibility.Visible : Visibility.Collapsed;
 
         LoadTool(tool);
-        HookLocalization();
     }
 
     /// <summary>新建空白工具</summary>
@@ -65,17 +63,7 @@ public partial class EditToolWindow : Window
         PathBox.Text = "";
         ArgsBox.Text = "";
         TagsBox.Text = "";
-        HookLocalization();
     }
-
-    private void HookLocalization()
-    {
-        LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
-        Closed += (_, _) => LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
-        LocalizationService.Apply(this);
-    }
-
-    private void LocalizationService_LanguageChanged(object? sender, EventArgs e) => LocalizationService.Apply(this);
 
     private void PrefillFromFile(string filePath)
     {

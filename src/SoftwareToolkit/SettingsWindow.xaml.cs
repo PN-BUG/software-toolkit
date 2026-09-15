@@ -22,7 +22,6 @@ public partial class SettingsWindow : Window
         HotKeyBox.Text = _originalState.HotKey;
         MinimizeToTrayChk.IsChecked = _originalState.MinimizeToTray;
         AutoStartChk.IsChecked = _originalState.AutoStart;
-        SelectLanguage(_originalState.Language);
 
         // 关于信息
         var version = typeof(SettingsWindow).Assembly.GetName().Version;
@@ -35,9 +34,6 @@ public partial class SettingsWindow : Window
             "SoftwareToolkit", "userstate.json");
 
         Owner = WpfApplication.Current.MainWindow;
-        LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
-        Closed += (_, _) => LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
-        LocalizationService.Apply(this);
     }
 
     private void ResetHotKey_Click(object sender, RoutedEventArgs e)
@@ -77,9 +73,7 @@ public partial class SettingsWindow : Window
         state.HotKey = hotKey;
         state.MinimizeToTray = MinimizeToTrayChk.IsChecked ?? true;
         state.AutoStart = AutoStartChk.IsChecked ?? false;
-        state.Language = SelectedLanguage();
         _configLoader.SaveUserState(state);
-        LocalizationService.SetLanguage(state.Language);
 
         // 设置或删除开机自启注册表项
         try
@@ -103,21 +97,11 @@ public partial class SettingsWindow : Window
             System.Diagnostics.Debug.WriteLine($"[AutoStart] 注册表操作失败: {ex.Message}");
         }
 
-        WpfMessageBox.Show(LocalizationService.T("设置已保存。"), LocalizationService.T("保存成功"), MessageBoxButton.OK, MessageBoxImage.Information);
+        WpfMessageBox.Show("设置已保存。", "保存成功", MessageBoxButton.OK, MessageBoxImage.Information);
 
         DialogResult = true;
         Close();
     }
-
-    private string SelectedLanguage() =>
-        (LanguageCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? LocalizationService.Chinese;
-
-    private void SelectLanguage(string? language)
-    {
-        LanguageCombo.SelectedIndex = language?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true ? 1 : 0;
-    }
-
-    private void LocalizationService_LanguageChanged(object? sender, EventArgs e) => LocalizationService.Apply(this);
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {

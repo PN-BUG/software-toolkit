@@ -22,12 +22,7 @@ public partial class SoftwareInventoryWindow : Window
         InitializeComponent();
         InventoryGrid.DataContext = _inventoryView;
         ListGrid.DataContext = _listView;
-        LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
-        Closed += (_, _) => LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
-        LocalizationService.Apply(this);
     }
-
-    private void LocalizationService_LanguageChanged(object? sender, EventArgs e) => LocalizationService.Apply(this);
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
