@@ -7,7 +7,6 @@ Add-Type -AssemblyName System.Windows.Forms
 $appDir = Join-Path $env:LOCALAPPDATA 'SoftwareToolkit\SupabaseKeepAlive'
 $configPath = Join-Path $appDir 'config.json'
 $workerSource = Join-Path $PSScriptRoot 'SupabaseKeepAliveWorker.ps1'
-$workerTarget = Join-Path $appDir 'SupabaseKeepAliveWorker.ps1'
 $logPath = Join-Path $appDir 'worker.log'
 $taskName = 'Supabase KeepAlive'
 $taskPath = '\SoftwareToolkit\'
@@ -184,7 +183,6 @@ function Save-Config {
     $tempPath = Join-Path $appDir 'config.json.tmp'
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $tempPath -Encoding UTF8
     Move-Item -LiteralPath $tempPath -Destination $configPath -Force
-    Copy-Item -LiteralPath $workerSource -Destination $workerTarget -Force
     return $config
 }
 
@@ -234,8 +232,8 @@ function Install-Schedule {
     $config = Save-Config
     if (-not $config.schedule.enabled) { throw '请先勾选“启用自动保活”。' }
     $powershellExe = (Get-Command powershell.exe).Source
-    $arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -ConfigPath "{1}"' -f $workerTarget, $configPath
-    $action = New-ScheduledTaskAction -Execute $powershellExe -Argument $arguments -WorkingDirectory $appDir
+    $arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -ConfigPath "{1}"' -f $workerSource, $configPath
+    $action = New-ScheduledTaskAction -Execute $powershellExe -Argument $arguments -WorkingDirectory $PSScriptRoot
     if ($config.schedule.mode -eq 'daily') {
         $at = [datetime]::ParseExact([string]$config.schedule.value, 'HH:mm', $null)
         $trigger = New-ScheduledTaskTrigger -Daily -At $at
@@ -324,8 +322,8 @@ $scheduleMode.Add_SelectionChanged({
         if ($script:runningProcess -and -not $script:runningProcess.HasExited) { Set-Status '已有保活任务正在运行。'; return }
         $psi = [Diagnostics.ProcessStartInfo]::new()
         $psi.FileName = (Get-Command powershell.exe).Source
-        $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -ConfigPath "{1}"' -f $workerTarget, $configPath
-        $psi.WorkingDirectory = $appDir
+        $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -ConfigPath "{1}"' -f $workerSource, $configPath
+        $psi.WorkingDirectory = $PSScriptRoot
         $psi.UseShellExecute = $true
         $psi.WindowStyle = 'Hidden'
         $script:runningProcess = [Diagnostics.Process]::Start($psi)

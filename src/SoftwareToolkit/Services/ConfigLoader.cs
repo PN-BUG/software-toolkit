@@ -113,9 +113,15 @@ public sealed class ConfigLoader
                 if (string.IsNullOrWhiteSpace(tool.Id))
                     tool.Id = Path.GetFileName(subDir);
 
-                // 自动补全路径(相对路径 → 绝对路径)
-                if (!string.IsNullOrWhiteSpace(tool.Path) && !System.IO.Path.IsPathRooted(tool.Path))
-                    tool.Path = System.IO.Path.GetFullPath(System.IO.Path.Combine(subDir, tool.Path));
+                // 先展开环境变量，再补全相对路径。系统程序可使用
+                // %SystemRoot% 等变量，避免被错误解析到工具子目录中。
+                if (!string.IsNullOrWhiteSpace(tool.Path))
+                {
+                    var expandedPath = Environment.ExpandEnvironmentVariables(tool.Path);
+                    tool.Path = System.IO.Path.IsPathRooted(expandedPath)
+                        ? expandedPath
+                        : System.IO.Path.GetFullPath(System.IO.Path.Combine(subDir, expandedPath));
+                }
 
                 // 自动补全图标路径
                 if (!string.IsNullOrWhiteSpace(tool.Icon) && !System.IO.Path.IsPathRooted(tool.Icon))

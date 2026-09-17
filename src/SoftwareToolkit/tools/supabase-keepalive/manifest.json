@@ -9,5 +9,21 @@
   "version": "2.0.0",
   "kind": "Executable",
   "path": "supabase-keepalive.bat",
-  "runAsAdmin": false
+  "runAsAdmin": false,
+  "schedulePresets": [
+    {
+      "name": "Supabase 保活",
+      "description": "使用 SoftwareToolkit 自带的 Worker 和已保存的加密配置执行 Supabase 多项目保活；请先在保活工具中保存配置或执行一次",
+      "taskName": "Supabase KeepAlive",
+      "program": "SupabaseKeepAliveWorker.ps1",
+      "argumentsTemplate": "-ConfigPath \"{configPath}\"",
+      "configPath": "%LOCALAPPDATA%\\SoftwareToolkit\\SupabaseKeepAlive\\config.json",
+      "configFilter": "Supabase 配置 (*.json)|*.json|所有文件|*.*",
+      "schedule": "Daily",
+      "dailyTime": "09:00",
+      "intervalMinutes": 2880,
+      "requiredPath": "%LOCALAPPDATA%\\SoftwareToolkit\\SupabaseKeepAlive\\config.json",
+      "logPath": "%LOCALAPPDATA%\\SoftwareToolkit\\SupabaseKeepAlive\\worker.log"
+    }
+  ]
 }

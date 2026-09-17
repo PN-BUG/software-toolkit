@@ -43,6 +43,25 @@ internal static class Program
             var search = (TextBox)window.FindName("SearchBox");
             var all = (CheckBox)window.FindName("BatchSelectAllCheck");
             var selected = Field<HashSet<string>>("_batchSelectedIds");
+            Check(window.FindName("RunningToolsList") is ItemsControl &&
+                  ((Border)window.FindName("RunningToolsEmpty")).Visibility == Visibility.Visible,
+                "home dashboard exposes the running-tool process list and empty state");
+            using (var monitor = new SoftwareToolkit.Services.RunningToolMonitor())
+            {
+                monitor.Track(new ToolDefinition { Name = "Smoke process" }, System.Diagnostics.Process.GetCurrentProcess());
+                monitor.Refresh();
+                Check(monitor.Items.Count == 1 && monitor.Items[0].ProcessId == Environment.ProcessId &&
+                      monitor.Items[0].MemoryBytes > 0,
+                    "running-tool monitor samples live process performance");
+            }
+            var dashboardMonitor = Field<SoftwareToolkit.Services.RunningToolMonitor>("_runningToolMonitor");
+            dashboardMonitor.Track(new ToolDefinition { Name = "Dashboard smoke process" }, System.Diagnostics.Process.GetCurrentProcess());
+            Call("RefreshRunningTools");
+            window.Measure(new Size(1280, 900));
+            window.Arrange(new Rect(0, 0, 1280, 900));
+            window.UpdateLayout();
+            Check(((ItemsControl)window.FindName("RunningToolsList")).Items.Count == 1,
+                "running dashboard renders read-only process properties without crashing");
             Check(list.Items.Count == 3, "all tools are displayed");
             var panel = list.ItemsPanel;
             search.Text = "EDITOR";
@@ -133,6 +152,63 @@ internal static class Program
             Check(shareHtml.Contains("A&amp;B Editor") && !shareHtml.Contains(@"C:\Private"), "shared HTML escapes content and excludes private install paths");
             var inventoryTools = new SoftwareToolkit.Services.ConfigLoader(System.IO.Path.GetFullPath("src/SoftwareToolkit")).LoadAllTools();
             Check(inventoryTools.Any(t => t.Id == "software-inventory" && t.Kind == ToolKind.BuiltIn), "software inventory manifest is discoverable");
+            var lanShareTool = inventoryTools.SingleOrDefault(t => t.Id == "lan-share");
+            Check(lanShareTool is { Kind: ToolKind.Executable, RunAsAdmin: true } && System.IO.File.Exists(lanShareTool.Path),
+                "LAN share tool is bundled and requests LAN listener privileges");
+            var lanShareDirectory = System.IO.Path.GetDirectoryName(lanShareTool!.Path)!;
+            var lanShareHtml = System.IO.File.ReadAllText(System.IO.Path.Combine(lanShareDirectory, "index.html"));
+            var lanShareServer = System.IO.File.ReadAllText(System.IO.Path.Combine(lanShareDirectory, "lan-share.ps1"));
+            Check(lanShareHtml.Contains("btnDiscover") && lanShareHtml.Contains("connectRequestModal") &&
+                  lanShareHtml.Contains("/connect/request") && lanShareHtml.Contains("/connect/respond"),
+                "LAN share UI exposes discovery and connection requests");
+            Check(lanShareServer.Contains("/api/connect/events") && lanShareServer.Contains("/api/connect/deliver") &&
+                  lanShareServer.Contains("lan-share-device.json"),
+                "LAN share server supports connection handshakes and stable device identity");
+            Check(lanShareHtml.Contains("height:100dvh") && lanShareHtml.Contains("safe-area-inset-bottom") &&
+                  lanShareHtml.Contains("scroll-snap-type:x proximity"),
+                "LAN share UI adapts to mobile viewports and safe areas");
+            Check(lanShareHtml.Contains("*::-webkit-scrollbar") &&
+                  lanShareHtml.Contains("scrollbar-width:thin") &&
+                  lanShareHtml.Contains("--scroll-thumb-hover") &&
+                  lanShareHtml.Contains("scrollbar-gutter:stable"),
+                "LAN share uses themed scrollbars across desktop, mobile, and dark mode");
+            Check(lanShareHtml.Contains("localTransfers") && lanShareHtml.Contains("X-Transfer-Id") &&
+                  lanShareHtml.Contains("transfer-section-title") && lanShareServer.Contains("New-TransferRecord") &&
+                  lanShareServer.Contains("Copy-StreamWithProgress"),
+                "LAN share transfer list includes live upload, chat-file, and download activity");
+            Check(lanShareHtml.Contains("chatAttachmentPanel") && lanShareHtml.Contains("chatDropOverlay") &&
+                  lanShareHtml.Contains("pendingChatFiles") && lanShareHtml.Contains("id=\"chatFileInput\" style=\"display:none\" multiple") &&
+                  lanShareHtml.Contains("X-Message-Id") && lanShareHtml.Contains("deliveryStatus:\"sending\"") &&
+                  lanShareHtml.Contains("stopImmediatePropagation") &&
+                  lanShareServer.Contains("existingMessage") && lanShareServer.Contains("duplicateFileMessage"),
+                "LAN chat supports queued multi-file previews, drag-and-drop, optimistic status, enter-to-send, and idempotency");
+            var lanBridgeTool = inventoryTools.SingleOrDefault(t => t.Id == "lan-connection-bridge");
+            Check(lanBridgeTool is { Kind: ToolKind.Executable } && System.IO.File.Exists(lanBridgeTool.Path),
+                "Android LAN connection bridge is independently discoverable");
+            var lanBridgeDirectory = System.IO.Path.GetDirectoryName(lanBridgeTool!.Path)!;
+            var lanBridgeApk = System.IO.Path.Combine(lanBridgeDirectory, "DandelionLanding.apk");
+            var lanBridgeDownloadPage = System.IO.File.ReadAllText(System.IO.Path.Combine(lanShareDirectory, "bridge.html"));
+            var lanBridgeManifest = System.IO.File.ReadAllText(System.IO.Path.Combine(lanBridgeDirectory, "android-src", "AndroidManifest.xml"));
+            var lanBridgeService = System.IO.File.ReadAllText(System.IO.Path.Combine(lanBridgeDirectory, "android-src", "java", "com", "softwaretoolkit", "lanbridge", "BridgeService.java"));
+            Check(System.IO.File.Exists(lanBridgeApk) && new System.IO.FileInfo(lanBridgeApk).Length > 10_000 &&
+                  lanBridgeManifest.Contains("BridgeService") && lanBridgeManifest.Contains("POST_NOTIFICATIONS") &&
+                  lanBridgeManifest.Contains("BOOT_COMPLETED"),
+                "Android bridge APK bundles foreground listening, notifications, and boot recovery");
+            Check(lanBridgeTool.Name == "蒲公英降落台" && lanShareHtml.Contains("btnBridge") &&
+                  lanShareHtml.Contains("/bridge") && lanShareHtml.Contains("bridgeId") &&
+                  lanShareServer.Contains("/api/bridge-apk") && lanShareServer.Contains("originUrl") &&
+                  lanBridgeService.Contains("connect-notification"),
+                "LAN share integrates optional bridge discovery, download, and browser handoff");
+            Check(lanBridgeDownloadPage.Contains("下载到当前设备") &&
+                  lanBridgeDownloadPage.Contains("扫码下载到另一台设备") &&
+                  lanBridgeDownloadPage.Contains("DandelionLanding.apk") &&
+                  lanBridgeDownloadPage.Contains("localDownloadUrl=location.origin") &&
+                  lanBridgeDownloadPage.Contains("info.lanUrl"),
+                "Dandelion Landing uses a dedicated local and QR download page");
+            Check(lanShareServer.Contains("GetFileName($scriptLocation) -eq 'lan-share'") &&
+                  lanShareServer.Contains("GetFileName($toolsDirectory) -eq 'tools'") &&
+                  !lanShareServer.Contains("$SharePath = (Get-Location).Path"),
+                "LAN share default root is stable when elevated outside System32");
             var keepAliveTool = inventoryTools.SingleOrDefault(t => t.Id == "supabase-keepalive");
             Check(keepAliveTool is { Kind: ToolKind.Executable } && System.IO.File.Exists(keepAliveTool.Path), "Supabase keepalive tool is bundled and discoverable");
             var keepAliveDirectory = System.IO.Path.GetDirectoryName(keepAliveTool!.Path)!;
@@ -140,12 +216,45 @@ internal static class Program
                   System.IO.File.Exists(System.IO.Path.Combine(keepAliveDirectory, "SupabaseKeepAliveWorker.ps1")),
                 "Supabase keepalive UI and worker are bundled together");
             var keepAliveUi = System.IO.File.ReadAllText(System.IO.Path.Combine(keepAliveDirectory, "SupabaseKeepAlive.ps1"));
-            var taskManagerUi = System.IO.File.ReadAllText(System.IO.Path.Combine(
-                System.IO.Path.GetDirectoryName(keepAliveDirectory)!, "task-scheduler", "task-scheduler.ps1"));
+            var taskSchedulerDirectory = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(keepAliveDirectory)!, "task-scheduler");
+            var taskManagerUi = System.IO.File.ReadAllText(System.IO.Path.Combine(taskSchedulerDirectory, "task-scheduler.ps1"));
             Check(keepAliveUi.Contains(@"$taskPath = '\SoftwareToolkit\'") && keepAliveUi.Contains("TaskManagerButton"),
                 "Supabase keepalive plan is integrated with the shared task manager");
             Check(taskManagerUi.Contains("Description=$_.Description"),
                 "task manager exposes descriptions for integrated tool tasks");
+            var keepAliveManifest = System.IO.File.ReadAllText(System.IO.Path.Combine(keepAliveDirectory, "manifest.json"));
+            Check(taskManagerUi.Contains("PresetBox") &&
+                  taskManagerUi.Contains("SoftwareToolkit 任务") &&
+                  !taskManagerUi.Contains("（包括 Supabase 保活）"),
+                "task manager offers a preset selector without a Supabase-specific heading");
+            Check(keepAliveManifest.Contains("schedulePresets") && keepAliveManifest.Contains("Supabase KeepAlive") &&
+                  taskManagerUi.Contains("Load-Presets"),
+                "Supabase keepalive publishes a discoverable scheduled-task preset");
+            Check(keepAliveManifest.Contains("\"program\": \"SupabaseKeepAliveWorker.ps1\"") &&
+                  taskManagerUi.Contains("$manifestPath.DirectoryName"),
+                "scheduled-task presets resolve bundled programs relative to their tool directory");
+            var taskScheduler = inventoryTools.Single(t => t.Id == "task-scheduler");
+            Check(System.IO.File.Exists(taskScheduler.Path) &&
+                  taskScheduler.Path.EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase) &&
+                  taskScheduler.Path.Contains("WindowsPowerShell", StringComparison.OrdinalIgnoreCase) &&
+                  taskScheduler.Args?.Contains("-WindowStyle Hidden") == true,
+                "task manager resolves the system PowerShell and launches without a companion CMD window");
+            Check(System.IO.File.Exists(System.IO.Path.Combine(taskSchedulerDirectory, "task-scheduler.vbs")) &&
+                  System.IO.File.ReadAllText(System.IO.Path.Combine(taskSchedulerDirectory, "task-scheduler.bat"))
+                      .Contains("wscript.exe", StringComparison.OrdinalIgnoreCase),
+                "task manager includes a standalone elevated launcher without a persistent console");
+            Check(keepAliveManifest.Contains("logPath") && taskManagerUi.Contains("LogButton") &&
+                  taskManagerUi.Contains("Get-PresetForTask"),
+                "task manager discovers and opens logs declared by tool presets");
+            var keepAliveWorker = System.IO.File.ReadAllText(System.IO.Path.Combine(keepAliveDirectory, "SupabaseKeepAliveWorker.ps1"));
+            Check(keepAliveManifest.Contains("argumentsTemplate") && keepAliveManifest.Contains("configPath") &&
+                  taskManagerUi.Contains("ConfigPathBox") && taskManagerUi.Contains("BrowseConfigButton") &&
+                  taskManagerUi.Contains("ArgumentsPanel") && taskManagerUi.Contains("$argumentsPanel.Visibility='Collapsed'"),
+                "Supabase preset uses one configuration picker and hides its generated command argument");
+            Check(keepAliveWorker.Contains("'password'") && keepAliveWorker.Contains("'apikey'") &&
+                  keepAliveWorker.Contains("LegacyPlaintext"),
+                "Supabase worker accepts original plaintext configuration with an explicit warning");
             var inventoryWindow = new SoftwareInventoryWindow();
             Check(inventoryWindow.FindName("InventoryGrid") is DataGrid && inventoryWindow.FindName("ListGrid") is DataGrid, "software inventory window exposes device and curated lists");
             inventoryWindow.Close();

@@ -2,6 +2,10 @@
 param(
     [ValidateSet('Release', 'Debug')][string]$Configuration = 'Release',
     [ValidateSet('win-x64', 'win-arm64')][string]$Runtime = 'win-x64',
+    [Alias('FrameworkDependent')][switch]$Lightweight,
+    [switch]$All,
+    [switch]$NoZip,
+    # Backward-compatible switches retained for existing scripts.
     [switch]$SelfContained,
     [switch]$Zip,
     [switch]$OpenOutput,
@@ -10,11 +14,45 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $projectPath = Join-Path $PSScriptRoot 'src\SoftwareToolkit\SoftwareToolkit.csproj'
-# Each invocation gets a fresh directory: no stale files, no overwriting user tools/state.
-$mode = if ($SelfContained) { 'standalone' } else { 'portable' }
-$packageName = "SoftwareToolkit-$Runtime-$mode-$(Get-Date -Format 'yyyyMMdd-HHmmss')-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
-$outputDir = Join-Path $PSScriptRoot "publish\$packageName"
+$releaseRoot = Join-Path $PSScriptRoot 'release'
+
+if ($Lightweight -and $SelfContained) { throw '-Lightweight cannot be combined with -SelfContained.' }
+if ($NoZip -and $Zip) { throw '-NoZip cannot be combined with -Zip.' }
+
+if ($All) {
+    if ($Lightweight -or $SelfContained) { throw '-All cannot be combined with -Lightweight, -FrameworkDependent, or -SelfContained.' }
+    $commonArguments = @{ Configuration = $Configuration; Runtime = $Runtime }
+    if ($NoZip) { $commonArguments.NoZip = $true }
+    Write-Host 'Packaging SoftwareToolkit standalone and lightweight builds...' -ForegroundColor Cyan
+    & $PSCommandPath @commonArguments
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & $PSCommandPath @commonArguments -Lightweight
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $expectedPaths = @(
+        (Join-Path $releaseRoot "SoftwareToolkit-$Runtime-standalone"),
+        (Join-Path $releaseRoot "SoftwareToolkit-$Runtime-lightweight")
+    )
+    if (-not $NoZip) {
+        $expectedPaths += @(
+            (Join-Path $releaseRoot "SoftwareToolkit-$Runtime-standalone.zip"),
+            (Join-Path $releaseRoot "SoftwareToolkit-$Runtime-lightweight.zip")
+        )
+    }
+    foreach ($path in $expectedPaths) { if (-not (Test-Path -LiteralPath $path)) { throw "Expected package output was not created: $path" } }
+    Write-Host ''
+    Write-Host 'ALL PACKAGES CREATED' -ForegroundColor Green
+    foreach ($path in $expectedPaths) { Write-Host "  $path" }
+    if ($OpenOutput) { Invoke-Item -LiteralPath $releaseRoot }
+    return
+}
+
+$isSelfContained = -not $Lightweight
+$mode = if ($isSelfContained) { 'standalone' } else { 'lightweight' }
+$packageName = "SoftwareToolkit-$Runtime-$mode"
+$outputDir = Join-Path $releaseRoot $packageName
 $logPath = "$outputDir.log"
+$archivePath = "$outputDir.zip"
+$writeZip = -not $NoZip
 $watch = [Diagnostics.Stopwatch]::StartNew()
 
 try {
@@ -24,12 +62,20 @@ try {
     if (-not (Test-Path -LiteralPath $projectPath -PathType Leaf)) {
         throw "Project not found: $projectPath"
     }
-    New-Item -ItemType Directory -Path (Split-Path $outputDir) -Force | Out-Null
+    $releaseFullPath = [IO.Path]::GetFullPath($releaseRoot).TrimEnd('\', '/')
+    $outputFullPath = [IO.Path]::GetFullPath($outputDir)
+    if (-not [string]::Equals([IO.Path]::GetDirectoryName($outputFullPath), $releaseFullPath, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe output path: $outputFullPath"
+    }
+    New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
+    foreach ($oldPath in @($outputDir, $archivePath, "$archivePath.sha256", $logPath)) {
+        if (Test-Path -LiteralPath $oldPath) { Remove-Item -LiteralPath $oldPath -Recurse -Force }
+    }
     Write-Host "[1/4] Publishing $Configuration / $Runtime / $mode"
     Write-Host "Log: $logPath"
     $publishArgs = @('publish', $projectPath, '-c', $Configuration, '-r', $Runtime,
         '-o', $outputDir, '--nologo', '-v', 'minimal',
-        "--self-contained=$($SelfContained.IsPresent.ToString().ToLowerInvariant())")
+        "--self-contained=$($isSelfContained.ToString().ToLowerInvariant())")
     Push-Location $PSScriptRoot
     try {
         & dotnet @publishArgs 2>&1 | Tee-Object -FilePath $logPath
@@ -39,7 +85,9 @@ try {
     if ($publishExitCode -ne 0) { throw "dotnet publish failed (exit $publishExitCode). See $logPath" }
 
     Write-Host '[2/4] Checking package files'
-    foreach ($required in @('SoftwareToolkit.exe', 'tools.json', 'tools\lan-share\manifest.json', 'tools\software-inventory\manifest.json')) {
+    foreach ($required in @('SoftwareToolkit.exe', 'tools.json', 'tools\lan-share\manifest.json',
+            'tools\lan-bridge-android\manifest.json', 'tools\lan-bridge-android\DandelionLanding.apk',
+            'tools\software-inventory\manifest.json')) {
         if (-not (Test-Path -LiteralPath (Join-Path $outputDir $required) -PathType Leaf)) {
             throw "Missing package file: $required"
         }
@@ -63,7 +111,7 @@ try {
     # Avoid a second, unreliable CLI/registry runtime detector.
     $launcher = "@echo off`r`nstart `"`" `"%~dp0SoftwareToolkit.exe`" %*`r`n"
     Set-Content -LiteralPath (Join-Path $outputDir 'SoftwareToolkit.bat') -Value $launcher -Encoding ASCII
-    $runtimeNote = if ($SelfContained) { 'Runtime included.' } else { ".NET 8 Desktop Runtime ($Runtime) required. https://dotnet.microsoft.com/download/dotnet/8.0" }
+    $runtimeNote = if ($isSelfContained) { 'Runtime included.' } else { ".NET 8 Desktop Runtime ($Runtime) required. https://dotnet.microsoft.com/download/dotnet/8.0" }
     Set-Content -LiteralPath (Join-Path $outputDir 'START-HERE.txt') -Encoding UTF8 -Value @"
 SoftwareToolkit
 Run SoftwareToolkit.exe. Keep tools.json and tools/ beside the executable.
@@ -77,7 +125,7 @@ Back up your tools.json, tools/ and user state before upgrading an existing inst
     $manifest = [ordered]@{
         configuration = $Configuration
         runtime = $Runtime
-        selfContained = $SelfContained.IsPresent
+        selfContained = $isSelfContained
         createdUtc = [DateTime]::UtcNow.ToString('o')
         totalBytes = $bytes
         files = @($files | ForEach-Object {
@@ -89,9 +137,8 @@ Back up your tools.json, tools/ and user state before upgrading an existing inst
         })
     }
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $outputDir 'package-manifest.json') -Encoding UTF8
-    if ($Zip) {
+    if ($writeZip) {
         Write-Host '[4/4] Creating ZIP archive'
-        $archivePath = "$outputDir.zip"
         # ZipFile includes hidden resources that Compress-Archive silently omits.
         Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
         $partialArchivePath = "$archivePath.partial"
@@ -110,11 +157,11 @@ Back up your tools.json, tools/ and user state before upgrading an existing inst
             Set-Content -LiteralPath "$archivePath.sha256" -Encoding ASCII
         Write-Host "Archive: $archivePath"
     }
-    else { Write-Host '[4/4] ZIP skipped (use -Zip to enable)' }
+    else { Write-Host '[4/4] ZIP skipped (-NoZip)' }
     $watch.Stop()
     Write-Host ("SUCCESS: {0:N2} MB, {1} files, {2:N1}s" -f ($bytes / 1MB), $files.Count, $watch.Elapsed.TotalSeconds) -ForegroundColor Green
     Write-Host "Output: $outputDir"
-    if ($OpenOutput) { Invoke-Item -LiteralPath $outputDir }
+    if ($OpenOutput) { Invoke-Item -LiteralPath $releaseRoot }
 }
 catch {
     Write-Error $_ -ErrorAction Continue

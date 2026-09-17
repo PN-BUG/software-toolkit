@@ -174,7 +174,7 @@
             </Grid>
         </Border>
         <Grid Grid.Column="1">
-            <Grid.RowDefinitions><RowDefinition Height="80"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="32"/></Grid.RowDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="80"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="32"/></Grid.RowDefinitions>
             <Border Background="White" BorderBrush="#E7EDE9" BorderThickness="0,0,0,1" Padding="26,18">
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <Border x:Name="SearchBorder" Background="#F5F8F6" BorderBrush="#DFE8E2" BorderThickness="1" CornerRadius="9" HorizontalAlignment="Stretch">
@@ -206,7 +206,68 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
-            <Grid Grid.Row="2" Margin="24,0,24,12">
+            <Border Grid.Row="2" Margin="30,0,30,18" Padding="18,14" Background="White" BorderBrush="#DCE8E2" BorderThickness="1" CornerRadius="12">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="32" Height="32" CornerRadius="8" Background="#DDF1E8" Margin="0,0,11,0">
+                                <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="15" Foreground="#167D6B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel>
+                                <TextBlock Text="运行仪表盘" FontSize="14" FontWeight="SemiBold"/>
+                                <TextBlock Text="实时查看从工具箱启动的进程" FontSize="10" Foreground="#83958C" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Background="#F1F6F3" CornerRadius="7" Padding="10,6" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="运行中 " Foreground="#72877C" FontSize="10"/><TextBlock x:Name="RunningCountText" Text="0" Foreground="#167D6B" FontWeight="SemiBold" FontSize="11"/></StackPanel>
+                            </Border>
+                            <Border Background="#F1F6F3" CornerRadius="7" Padding="10,6" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="CPU " Foreground="#72877C" FontSize="10"/><TextBlock x:Name="RunningCpuText" Text="0.0%" Foreground="#315D54" FontWeight="SemiBold" FontSize="11"/></StackPanel>
+                            </Border>
+                            <Border Background="#F1F6F3" CornerRadius="7" Padding="10,6">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="内存 " Foreground="#72877C" FontSize="10"/><TextBlock x:Name="RunningMemoryText" Text="0 B" Foreground="#315D54" FontWeight="SemiBold" FontSize="11"/></StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                    <Border x:Name="RunningToolsEmpty" Grid.Row="1" Background="#F8FAF9" CornerRadius="8" Padding="12,10" Margin="0,12,0,0">
+                        <TextBlock Text="暂无运行中的工具 · 从下方启动后会实时显示" HorizontalAlignment="Center" Foreground="#8A9B92" FontSize="11"/>
+                    </Border>
+                    <ScrollViewer x:Name="RunningToolsScroll" Grid.Row="1" Margin="0,12,0,0" MaxHeight="132" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                        <ItemsControl x:Name="RunningToolsList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:RunningToolProcess}">
+                                    <Border Background="#F8FAF9" CornerRadius="8" Padding="12,8" Margin="0,0,0,5">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="128"/><ColumnDefinition Width="82"/><ColumnDefinition Width="82"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" MinWidth="120">
+                                                <Border Width="28" Height="28" CornerRadius="7" Background="#E3F0EA" Margin="0,0,10,0">
+                                                    <TextBlock Text="{Binding Kind, Converter={StaticResource KindToIconConverter}}" FontSize="13" Foreground="#315D54" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding ToolName, Mode=OneWay}" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock FontSize="9" Foreground="#8A9B92"><Run Text="{Binding ProcessName, Mode=OneWay}"/><Run Text="  ·  PID "/><Run Text="{Binding ProcessId, Mode=OneWay}"/></TextBlock>
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <Grid Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/></Grid.ColumnDefinitions>
+                                                <ProgressBar Height="6" Minimum="0" Maximum="100" Value="{Binding CpuPercent, Mode=OneWay}" Foreground="#2A9A7E" Background="#E2EAE6" BorderThickness="0"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding CpuText, Mode=OneWay}" FontSize="10" Foreground="#536D63" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                            <TextBlock Grid.Column="2" Text="{Binding MemoryText, Mode=OneWay}" FontSize="10" Foreground="#536D63" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding RunningTimeText, Mode=OneWay}" FontSize="10" Foreground="#788D83" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                                            <Button Grid.Column="4" Content="结束" Style="{StaticResource ActionButton}" Height="28" Padding="9,0" Margin="10,0,0,0" Foreground="#A8554A" Tag="{Binding}" Click="StopRunningTool_Click" ToolTip="结束该工具进程"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+            <Grid Grid.Row="3" Margin="24,0,24,12">
                 <ListBox x:Name="ToolCardsListBox" Background="Transparent" BorderThickness="0" Padding="0"
                          SizeChanged="ToolList_SizeChanged" SelectionChanged="ToolList_SelectionChanged" MouseDoubleClick="ToolList_MouseDoubleClick"
                          PreviewMouseLeftButtonUp="ToolCardsListBox_PreviewMouseLeftButtonUp" PreviewMouseRightButtonUp="ToolCardsListBox_PreviewMouseRightButtonUp"
@@ -229,7 +290,7 @@
                     </StackPanel>
                 </Border>
             </Grid>
-            <Grid Grid.Row="3" Margin="30,0,30,12">
+            <Grid Grid.Row="4" Margin="30,0,30,12">
                 <Border x:Name="SelectionPanel" Background="White" BorderBrush="#D9E6DE" BorderThickness="1" CornerRadius="10" Padding="16,12" Visibility="Collapsed">
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <StackPanel Margin="0,0,16,0"><TextBlock x:Name="SelectedNameText" FontWeight="SemiBold"/><TextBlock x:Name="SelectedPathText" Foreground="#829789" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,6,0,0"/></StackPanel>
@@ -250,7 +311,7 @@
                     </DockPanel>
                 </Border>
             </Grid>
-            <DockPanel Grid.Row="4" Margin="30,0">
+            <DockPanel Grid.Row="5" Margin="30,0">
                 <TextBlock DockPanel.Dock="Right" Text="Ctrl+F 搜索  ·  双击 / Enter 启动" FontSize="10" Foreground="#98A69D"/>
                 <TextBlock x:Name="StatusText" Text="就绪" FontSize="10" Foreground="#7A9182" TextTrimming="CharacterEllipsis"/>
             </DockPanel>

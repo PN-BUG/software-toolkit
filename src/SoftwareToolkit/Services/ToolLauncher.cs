@@ -33,6 +33,9 @@ public sealed class ToolLauncher
 
     private readonly BuildService _buildService = new();
 
+    /// <summary>Raised when a launch produces a process that can be monitored.</summary>
+    public event Action<ToolDefinition, Process>? ProcessStarted;
+
     public ToolLauncher(ConfigLoader configLoader, IntPtr ownerHandle)
     {
         _configLoader = configLoader;
@@ -103,7 +106,9 @@ public sealed class ToolLauncher
         if (tool.RunAsAdmin)
             psi.Verb = "runas";
 
-        Process.Start(psi);
+        var process = Process.Start(psi);
+        if (process != null)
+            ProcessStarted?.Invoke(tool, process);
         return Task.CompletedTask;
     }
 
@@ -184,13 +189,15 @@ public sealed class ToolLauncher
             ? ResolvePath(tool.WorkingDirectory, tool.SourceFile)
             : Environment.CurrentDirectory;
 
-        Process.Start(new ProcessStartInfo
+        var process = Process.Start(new ProcessStartInfo
         {
             FileName = "cmd.exe",
             Arguments = $"/k {tool.Path}",
             WorkingDirectory = workDir,
             UseShellExecute = true
         });
+        if (process != null)
+            ProcessStarted?.Invoke(tool, process);
         return Task.CompletedTask;
     }
 

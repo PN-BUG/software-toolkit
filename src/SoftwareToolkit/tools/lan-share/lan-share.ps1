@@ -3,7 +3,7 @@
 #  LAN file sharing server (pure PowerShell + .NET HttpListener)
 #
 #  Usage:
-#    .\lan-share.ps1                              (share current dir, port 8088)
+#    .\lan-share.ps1                              (share package root, port 8088)
 #    .\lan-share.ps1 -SharePath D:\MyShare        (share a specific dir)
 #    .\lan-share.ps1 -SharePath D:\MyShare -Port 9000
 #    .\lan-share.ps1 -SharePath D:\Files -ReadOnly -Token mysecret
@@ -15,7 +15,8 @@ param(
     [string]$SharePath = "",
     [int]$Port = 8088,
     [switch]$ReadOnly,
-    [string]$Token = ""
+    [string]$Token = "",
+    [switch]$NoBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,7 +29,14 @@ if ($Port -lt 1 -or $Port -gt 65535) {
 
 # ---------- Resolve share path ----------
 if ([string]::IsNullOrWhiteSpace($SharePath)) {
-    $SharePath = (Get-Location).Path
+    $scriptLocation = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\', '/')
+    $toolsDirectory = [System.IO.Path]::GetDirectoryName($scriptLocation)
+    if ([System.IO.Path]::GetFileName($scriptLocation) -eq 'lan-share' -and
+        [System.IO.Path]::GetFileName($toolsDirectory) -eq 'tools') {
+        $SharePath = [System.IO.Path]::GetDirectoryName($toolsDirectory)
+    } else {
+        $SharePath = $scriptLocation
+    }
 }
 if (-not [System.IO.Path]::IsPathRooted($SharePath)) {
     $SharePath = Join-Path (Get-Location) $SharePath
@@ -76,6 +84,19 @@ function Get-LocalIPs {
 # ---------- URL-encode ----------
 function Url-Encode([string]$s) {
     return [System.Uri]::EscapeDataString($s)
+}
+
+function Get-QueryValueUtf8([string]$rawQuery, [string]$name) {
+    if ([string]::IsNullOrEmpty($rawQuery)) { return $null }
+    foreach ($pair in $rawQuery.TrimStart('?').Split('&')) {
+        $parts = $pair -split '=', 2
+        $rawKey = $parts[0].Replace('+', ' ')
+        $key = [System.Uri]::UnescapeDataString($rawKey)
+        if (-not [string]::Equals($key, $name, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        if ($parts.Length -lt 2) { return '' }
+        return [System.Uri]::UnescapeDataString($parts[1].Replace('+', ' '))
+    }
+    return $null
 }
 
 # ---------- HTML escape ----------
@@ -278,9 +299,17 @@ function Parse-Multipart([System.IO.Stream]$body, [string]$boundary) {
         $bodyEnd = $partEnd - 2
         if ($bodyEnd -lt $bodyStart) { continue }
 
-        # Parse Content-Disposition
-        if ($headerStr -match 'Content-Disposition:.*filename="([^"]+)"') {
+        # Parse Content-Disposition. Mobile browsers may send either the classic
+        # filename="..." form or RFC 5987's filename*=UTF-8''... form.
+        $filename = $null
+        if ($headerStr -match '(?i)filename\*\s*=\s*"?UTF-8''''([^;"\r\n]+)') {
+            $filename = [System.Uri]::UnescapeDataString($matches[1])
+        } elseif ($headerStr -match '(?i)filename\s*=\s*"([^"]*)"') {
             $filename = $matches[1]
+        } elseif ($headerStr -match '(?i)filename\s*=\s*([^;\r\n]+)') {
+            $filename = $matches[1].Trim().Trim('"')
+        }
+        if (-not [string]::IsNullOrWhiteSpace($filename)) {
             # Trim trailing CRLF if any
             $len = $bodyEnd - $bodyStart
             $fileBytes = New-Object byte[] $len
@@ -289,6 +318,63 @@ function Parse-Multipart([System.IO.Stream]$body, [string]$boundary) {
         }
     }
     return $files
+}
+
+function Get-MultipartBoundary([string]$contentType) {
+    if ([string]::IsNullOrWhiteSpace($contentType)) { return $null }
+    $match = [regex]::Match(
+        $contentType,
+        'boundary\s*=\s*(?:"([^"]+)"|([^;]+))',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) { return $null }
+    $value = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
+    return $value.Trim()
+}
+
+function Save-RequestStream(
+    [System.Net.HttpListenerRequest]$request,
+    [string]$destination,
+    [System.Collections.IDictionary]$transfer = $null) {
+    $tempName = '.lan-share-' + [guid]::NewGuid().ToString('N') + '.uploading'
+    $tempPath = Join-Path ([System.IO.Path]::GetDirectoryName($destination)) $tempName
+    $output = $null
+    try {
+        $output = New-Object System.IO.FileStream(
+            $tempPath,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None,
+            1048576,
+            [System.IO.FileOptions]::SequentialScan)
+        $buffer = New-Object byte[] 1048576
+        [long]$written = 0
+        while (($read = $request.InputStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $output.Write($buffer, 0, $read)
+            $written += $read
+            if ($transfer) { Update-TransferRecord $transfer $written 'sending' }
+        }
+        $output.Flush()
+        $output.Dispose()
+        $output = $null
+        Move-Item -LiteralPath $tempPath -Destination $destination -Force
+    } catch {
+        if ($output) { try { $output.Dispose() } catch {} }
+        if (Test-Path -LiteralPath $tempPath) { Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue }
+        throw
+    }
+}
+
+function Copy-StreamWithProgress(
+    [System.IO.Stream]$inputStream,
+    [System.IO.Stream]$outputStream,
+    [System.Collections.IDictionary]$transfer = $null) {
+    $buffer = New-Object byte[] 1048576
+    [long]$written = 0
+    while (($read = $inputStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+        $outputStream.Write($buffer, 0, $read)
+        $written += $read
+        if ($transfer) { Update-TransferRecord $transfer $written 'sending' }
+    }
 }
 
 function Find-Bytes([byte[]]$haystack, [byte[]]$needle, [int]$start) {
@@ -343,6 +429,7 @@ function Send-Error([System.Net.HttpListenerResponse]$resp, [int]$code, [string]
 
 function Send-Json([System.Net.HttpListenerResponse]$resp, $data, [int]$code = 200) {
     $json = ConvertTo-Json $data -Depth 10 -Compress
+    $resp.Headers['Cache-Control'] = 'no-store'
     Send-Text $resp $json $code 'application/json; charset=utf-8'
 }
 
@@ -432,6 +519,11 @@ if (Test-Path -LiteralPath $indexHtmlPath -PathType Leaf) {
 } else {
     Write-Host "  [Warn] index.html not found at $indexHtmlPath, falling back to server-rendered HTML" -ForegroundColor Yellow
 }
+$bridgePagePath = Join-Path $scriptDir 'bridge.html'
+$bridgePageBytes = $null
+if (Test-Path -LiteralPath $bridgePagePath -PathType Leaf) {
+    $bridgePageBytes = [System.IO.File]::ReadAllBytes($bridgePagePath)
+}
 
 # Load qrcode.min.js for QR code generation
 $qrJsPath = Join-Path $scriptDir 'qrcode.min.js'
@@ -440,6 +532,8 @@ if (Test-Path -LiteralPath $qrJsPath -PathType Leaf) {
     $qrJsBytes = [System.IO.File]::ReadAllBytes($qrJsPath)
     Write-Host "  [OK] qrcode.min.js loaded ($([math]::Round($qrJsBytes.Length/1KB,1)) KB)" -ForegroundColor DarkGray
 }
+$bridgeApkPath = Join-Path ([System.IO.Path]::GetDirectoryName($scriptDir)) 'lan-bridge-android\DandelionLanding.apk'
+$bridgeApkAvailable = Test-Path -LiteralPath $bridgeApkPath -PathType Leaf
 
 Write-Host ""
 Write-Host "  🌐 LAN File Share" -ForegroundColor Cyan
@@ -463,25 +557,108 @@ Write-Host "  按 Ctrl+C 停止服务" -ForegroundColor Gray
 Write-Host ""
 
 # ---------- Auto-open browser ----------
-try {
-    $openUrl = "http://127.0.0.1:$Port/"
-    Start-Process $openUrl
-    Write-Host "  [OK] 已打开浏览器: $openUrl" -ForegroundColor DarkGray
-} catch {
-    Write-Host "  [Info] 请手动打开浏览器访问 http://127.0.0.1:$Port/" -ForegroundColor DarkGray
+if (-not $NoBrowser) {
+    try {
+        $openUrl = "http://127.0.0.1:$Port/"
+        Start-Process $openUrl
+        Write-Host "  [OK] 已打开浏览器: $openUrl" -ForegroundColor DarkGray
+    } catch {
+        Write-Host "  [Info] 请手动打开浏览器访问 http://127.0.0.1:$Port/" -ForegroundColor DarkGray
+    }
 }
 Write-Host ""
 
-# ---------- Device discovery & chat globals ----------
-$script:DeviceId = [guid]::NewGuid().ToString('N').Substring(0, 8)
+# ---------- Device discovery, connection requests & chat globals ----------
+$deviceStateDir = Join-Path $env:LOCALAPPDATA 'SoftwareToolkit'
+$deviceStatePath = Join-Path $deviceStateDir 'lan-share-device.json'
+$script:DeviceId = $null
 $script:DeviceName = $env:COMPUTERNAME
+if ([string]::IsNullOrWhiteSpace($script:DeviceName)) {
+    try { $script:DeviceName = [System.Net.Dns]::GetHostName() } catch { $script:DeviceName = 'Windows PC' }
+}
+try {
+    if (Test-Path -LiteralPath $deviceStatePath -PathType Leaf) {
+        $savedDevice = Get-Content -LiteralPath $deviceStatePath -Raw | ConvertFrom-Json
+        if ($savedDevice.id -match '^[a-f0-9]{8,32}$') { $script:DeviceId = [string]$savedDevice.id }
+        if (-not [string]::IsNullOrWhiteSpace([string]$savedDevice.name)) { $script:DeviceName = [string]$savedDevice.name }
+    }
+} catch {}
+if (-not $script:DeviceId) {
+    $script:DeviceId = [guid]::NewGuid().ToString('N').Substring(0, 12)
+}
+try {
+    New-Item -ItemType Directory -Path $deviceStateDir -Force | Out-Null
+    @{id=$script:DeviceId;name=$script:DeviceName} | ConvertTo-Json -Compress |
+        Set-Content -LiteralPath $deviceStatePath -Encoding UTF8
+} catch {}
 $script:Devices = @{}   # key=deviceId, value=@{id,name,ip,port,lastSeen}
 $script:Clients = @{}   # key=clientId, value=@{id,name,ip,lastSeen} — browser clients
 $script:Messages = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
 $script:Transfers = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
+$script:Connections = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
 $script:UdpBroadcastPort = 8098
 $script:LastBroadcast = [datetime]::MinValue
+
+function New-TransferRecord(
+    [string]$id,
+    [string]$name,
+    [long]$size,
+    [string]$direction,
+    [string]$kind,
+    [string]$from,
+    [string]$to) {
+    if ([string]::IsNullOrWhiteSpace($id)) { $id = 'server-' + [guid]::NewGuid().ToString('N') }
+    if ($size -lt 0) { $size = 0 }
+    for ($i = $script:Transfers.Count - 1; $i -ge 0; $i--) {
+        if ($script:Transfers[$i].id -eq $id) { $script:Transfers.RemoveAt($i) }
+    }
+    $now = [datetime]::UtcNow.ToString('o')
+    $record = [ordered]@{
+        id = $id; name = $name; size = $size; bytesDone = 0; percent = 0; speed = 0
+        direction = $direction; kind = $kind; from = $from; to = $to
+        status = 'sending'; ts = $now; updatedAt = $now; error = ''
+    }
+    $script:Transfers.Insert(0, $record)
+    while ($script:Transfers.Count -gt 100) { $script:Transfers.RemoveAt($script:Transfers.Count - 1) }
+    return $record
+}
+
+function Update-TransferRecord(
+    [System.Collections.IDictionary]$record,
+    [long]$bytesDone,
+    [string]$status = 'sending',
+    [string]$errorMessage = '') {
+    if (-not $record) { return }
+    $record['bytesDone'] = [Math]::Max([long]0, $bytesDone)
+    $record['status'] = $status
+    $record['error'] = $errorMessage
+    $record['updatedAt'] = [datetime]::UtcNow.ToString('o')
+    $size = [long]$record['size']
+    if ($status -eq 'done' -and $size -le 0 -and $record['bytesDone'] -gt 0) {
+        $record['size'] = [long]$record['bytesDone']
+        $size = [long]$record['size']
+    }
+    if ($size -gt 0) {
+        $record['percent'] = [Math]::Min(100, [Math]::Round(([double]$record['bytesDone'] / $size) * 100))
+    }
+    $started = [datetime]::Parse([string]$record['ts']).ToUniversalTime()
+    $seconds = ([datetime]::UtcNow - $started).TotalSeconds
+    if ($seconds -gt 0.2) { $record['speed'] = [Math]::Round([double]$record['bytesDone'] / $seconds) }
+}
 $script:BroadcastInterval = 5  # seconds
+
+function Invoke-LanJsonPost([string]$url, $data) {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes(($data | ConvertTo-Json -Depth 8 -Compress))
+    $forward = [System.Net.WebRequest]::Create($url)
+    $forward.Method = 'POST'
+    $forward.ContentType = 'application/json; charset=utf-8'
+    $forward.ContentLength = $bytes.Length
+    $forward.Timeout = 5000
+    $stream = $forward.GetRequestStream()
+    try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+    $response = $forward.GetResponse()
+    try { return [int]$response.StatusCode } finally { $response.Dispose() }
+}
 
 # ---------- UDP broadcast helpers ----------
 function Send-UdpBroadcast {
@@ -511,6 +688,8 @@ function Process-UdpBroadcast {
             name     = $data.name
             ip       = $SenderIp
             port     = [int]$data.port
+            type     = if ($data.type) { [string]$data.type } else { 'server' }
+            capability = [string]$data.capability
             lastSeen = [datetime]::UtcNow
         }
     } catch {}
@@ -566,6 +745,14 @@ try {
         }
         foreach ($ck in $staleC) { $script:Clients.Remove($ck) }
 
+        # --- Prune old connection events (>24 hours) ---
+        for ($ci = $script:Connections.Count - 1; $ci -ge 0; $ci--) {
+            try {
+                $updated = [datetime]::Parse([string]$script:Connections[$ci].updated).ToUniversalTime()
+                if (($now - $updated).TotalHours -gt 24) { $script:Connections.RemoveAt($ci) }
+            } catch { $script:Connections.RemoveAt($ci) }
+        }
+
         # --- HTTP request (non-blocking check) ---
         $waited = $ar.AsyncWaitHandle.WaitOne(100)  # 100ms to allow UDP polling
         if (-not $waited) { continue }
@@ -619,16 +806,49 @@ try {
                     ips = $ips
                     deviceId = $script:DeviceId
                     deviceName = $script:DeviceName
+                    bridgeAvailable = [bool]$bridgeApkAvailable
                 }
                 Send-Json $resp $info
                 continue
             }
 
+            # Optional standalone Android bridge. LAN sharing remains fully usable without it.
+            if ($rawUrl -eq '/api/bridge-apk' -and $method -eq 'GET') {
+                if (-not $bridgeApkAvailable) {
+                    Send-Error $resp 404 'Android bridge APK is not bundled'
+                    continue
+                }
+                $apk = Get-Item -LiteralPath $bridgeApkPath
+                $resp.StatusCode = 200
+                $resp.ContentType = 'application/vnd.android.package-archive'
+                $resp.Headers['Content-Disposition'] = "attachment; filename=DandelionLanding.apk"
+                $resp.ContentLength64 = $apk.Length
+                $resp.SendChunked = $false
+                $apkStream = [System.IO.File]::OpenRead($bridgeApkPath)
+                try { $apkStream.CopyTo($resp.OutputStream) } finally { $apkStream.Dispose() }
+                $resp.OutputStream.Close()
+                continue
+            }
+
+            # Download landing page: local download plus QR download for another device.
+            if (($rawUrl -eq '/bridge' -or $rawUrl -eq '/bridge/') -and $method -eq 'GET') {
+                if (-not $bridgePageBytes -or -not $bridgeApkAvailable) {
+                    Send-Error $resp 404 'Dandelion Landing download page is unavailable'
+                    continue
+                }
+                $resp.StatusCode = 200
+                $resp.ContentType = 'text/html; charset=utf-8'
+                $resp.Headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+                $resp.ContentLength64 = $bridgePageBytes.Length
+                $resp.OutputStream.Write($bridgePageBytes, 0, $bridgePageBytes.Length)
+                $resp.OutputStream.Close()
+                continue
+            }
+
             # API: directory listing
             if ($rawUrl -eq '/api/list' -and $method -eq 'GET') {
-                $queryPath = $query['path']
+                $queryPath = Get-QueryValueUtf8 $req.Url.Query 'path'
                 if (-not $queryPath) { $queryPath = '' }
-                $queryPath = [System.Uri]::UnescapeDataString($queryPath)
                 $queryPath = $queryPath.TrimStart('/')
                 $listAbs = Join-Path $SharePath $queryPath
                 $listFull = [System.IO.Path]::GetFullPath($listAbs).TrimEnd('\')
@@ -683,16 +903,29 @@ try {
 
             # API: device list (servers + clients)
             if ($rawUrl -eq '/api/devices' -and $method -eq 'GET') {
-                $devArr = @()
+                # Always expose this host as a chat target. Without this entry a
+                # phone is left with no selectable peer unless a second browser
+                # happens to be open on the PC.
+                $devArr = @(@{
+                    id       = $script:DeviceId
+                    name     = $script:DeviceName
+                    ip       = $primaryIp
+                    port     = $Port
+                    lastSeen = [datetime]::UtcNow.ToString('o')
+                    type     = 'server'
+                    isLocal  = $true
+                })
                 foreach ($dk in $script:Devices.Keys) {
                     $dev = $script:Devices[$dk]
+                    if ($dev.id -eq $script:DeviceId) { continue }
                     $devArr += @{
                         id       = $dev.id
                         name     = $dev.name
                         ip       = $dev.ip
                         port     = $dev.port
                         lastSeen = $dev.lastSeen.ToString('o')
-                        type     = 'server'
+                        type     = if ($dev.type) { $dev.type } else { 'server' }
+                        capability = $dev.capability
                     }
                 }
                 # Deduplicate clients by IP: keep only the most recently seen per IP
@@ -718,6 +951,169 @@ try {
                 continue
             }
 
+            # API: initiate a connection request. Requests to clients on this
+            # server stay local; requests to remembered/discovered servers are
+            # forwarded to their lan-share endpoint.
+            if ($rawUrl -eq '/api/connect/request' -and $method -eq 'POST') {
+                $bodyMs = New-Object System.IO.MemoryStream
+                $req.InputStream.CopyTo($bodyMs)
+                $bodyStr = [System.Text.Encoding]::UTF8.GetString($bodyMs.ToArray())
+                $bodyMs.Dispose()
+                try {
+                    $body = $bodyStr | ConvertFrom-Json
+                    if ([string]::IsNullOrWhiteSpace([string]$body.from) -or
+                        [string]::IsNullOrWhiteSpace([string]$body.to)) {
+                        throw 'from and to are required'
+                    }
+                    $isLocalTarget = $body.to -eq $script:DeviceId -or $script:Clients.ContainsKey([string]$body.to)
+                    if (-not $isLocalTarget -and (-not $body.targetIp -or -not $body.targetPort)) {
+                        Send-Json $resp @{error='设备当前离线，且没有可用的历史服务地址'} 409
+                        continue
+                    }
+                    # Replace an older pending request for the same pair.
+                    for ($ci = $script:Connections.Count - 1; $ci -ge 0; $ci--) {
+                        $old = $script:Connections[$ci]
+                        if ($old.from -eq $body.from -and $old.to -eq $body.to -and $old.status -eq 'pending') {
+                            $script:Connections.RemoveAt($ci)
+                        }
+                    }
+                    $nowIso = [datetime]::UtcNow.ToString('o')
+                    $connection = [ordered]@{
+                        id             = [guid]::NewGuid().ToString('N').Substring(0, 12)
+                        from           = [string]$body.from
+                        fromName       = [string]$body.fromName
+                        to             = [string]$body.to
+                        targetName     = [string]$body.targetName
+                        targetIp       = [string]$body.targetIp
+                        targetPort     = [int]$body.targetPort
+                        targetType     = [string]$body.targetType
+                        originIp       = $primaryIp
+                        originPort     = $Port
+                        originUrl      = if ($Token) { "http://${primaryIp}:$Port/?t=$(Url-Encode $Token)" } else { "http://${primaryIp}:$Port/" }
+                        originServerId = $script:DeviceId
+                        status         = 'pending'
+                        ts             = $nowIso
+                        updated        = $nowIso
+                    }
+                    [void]$script:Connections.Add($connection)
+                    if (-not $isLocalTarget) {
+                        try {
+                            [void](Invoke-LanJsonPost "http://$($connection.targetIp):$($connection.targetPort)/api/connect/deliver" $connection)
+                        } catch {
+                            $connection.status = 'failed'
+                            $connection.updated = [datetime]::UtcNow.ToString('o')
+                            Send-Json $resp @{error=('无法联系设备: ' + $_.Exception.Message)} 502
+                            continue
+                        }
+                    }
+                    Write-Host "  [$ts] CONNECT request $($connection.fromName) -> $($connection.targetName)" -ForegroundColor Cyan
+                    Send-Json $resp @{ok=$true; id=$connection.id; status=$connection.status}
+                } catch {
+                    Send-Json $resp @{error=$_.Exception.Message} 400
+                }
+                continue
+            }
+
+            # API: receive a connection request forwarded by another server.
+            if ($rawUrl -eq '/api/connect/deliver' -and $method -eq 'POST') {
+                $bodyMs = New-Object System.IO.MemoryStream
+                $req.InputStream.CopyTo($bodyMs)
+                $bodyStr = [System.Text.Encoding]::UTF8.GetString($bodyMs.ToArray())
+                $bodyMs.Dispose()
+                try {
+                    $incoming = $bodyStr | ConvertFrom-Json
+                    if (-not $incoming.id -or -not $incoming.from -or -not $incoming.to) { throw 'Invalid connection request' }
+                    $exists = $false
+                    foreach ($item in $script:Connections) { if ($item.id -eq $incoming.id) { $exists = $true; break } }
+                    if (-not $exists) {
+                        $copy = [ordered]@{}
+                        foreach ($property in $incoming.PSObject.Properties) { $copy[$property.Name] = $property.Value }
+                        $copy.status = 'pending'
+                        $copy.updated = [datetime]::UtcNow.ToString('o')
+                        [void]$script:Connections.Add($copy)
+                    }
+                    Send-Json $resp @{ok=$true}
+                } catch {
+                    Send-Json $resp @{error=$_.Exception.Message} 400
+                }
+                continue
+            }
+
+            # API: browsers poll incoming requests and outgoing responses.
+            if ($rawUrl -eq '/api/connect/events' -and $method -eq 'GET') {
+                $clientId = Get-QueryValueUtf8 $req.Url.Query 'clientId'
+                $events = @()
+                if ($clientId) {
+                    foreach ($item in $script:Connections) {
+                        $isIncoming = $item.status -eq 'pending' -and $item.from -ne $clientId -and
+                            ($item.to -eq $clientId -or $item.to -eq $script:DeviceId)
+                        $isResponse = $item.from -eq $clientId -and $item.status -ne 'pending'
+                        if ($isIncoming -or $isResponse) { $events += $item }
+                    }
+                }
+                Send-Json $resp $events
+                continue
+            }
+
+            # API: accept or reject a connection request.
+            if ($rawUrl -eq '/api/connect/respond' -and $method -eq 'POST') {
+                $bodyMs = New-Object System.IO.MemoryStream
+                $req.InputStream.CopyTo($bodyMs)
+                $bodyStr = [System.Text.Encoding]::UTF8.GetString($bodyMs.ToArray())
+                $bodyMs.Dispose()
+                try {
+                    $body = $bodyStr | ConvertFrom-Json
+                    $connection = $null
+                    foreach ($item in $script:Connections) { if ($item.id -eq $body.id) { $connection = $item; break } }
+                    if (-not $connection) {
+                        Send-Json $resp @{error='连接请求不存在或已过期'} 404
+                        continue
+                    }
+                    $newStatus = if ([bool]$body.accepted) { 'accepted' } else { 'rejected' }
+                    $responseEvent = [ordered]@{}
+                    foreach ($key in $connection.Keys) { $responseEvent[$key] = $connection[$key] }
+                    $responseEvent.status = $newStatus
+                    $responseEvent.responderId = [string]$body.responderId
+                    $responseEvent.responderName = [string]$body.responderName
+                    $responseEvent.responderIp = $primaryIp
+                    $responseEvent.responderPort = $Port
+                    $responseEvent.updated = [datetime]::UtcNow.ToString('o')
+                    if ($connection.originServerId -ne $script:DeviceId) {
+                        try {
+                            [void](Invoke-LanJsonPost "http://$($connection.originIp):$($connection.originPort)/api/connect/response/deliver" $responseEvent)
+                        } catch {
+                            Send-Json $resp @{error=('无法回复发起设备: ' + $_.Exception.Message)} 502
+                            continue
+                        }
+                    }
+                    foreach ($key in $responseEvent.Keys) { $connection[$key] = $responseEvent[$key] }
+                    Send-Json $resp @{ok=$true; status=$newStatus}
+                } catch {
+                    Send-Json $resp @{error=$_.Exception.Message} 400
+                }
+                continue
+            }
+
+            # API: receive the accept/reject result on the originating server.
+            if ($rawUrl -eq '/api/connect/response/deliver' -and $method -eq 'POST') {
+                $bodyMs = New-Object System.IO.MemoryStream
+                $req.InputStream.CopyTo($bodyMs)
+                $bodyStr = [System.Text.Encoding]::UTF8.GetString($bodyMs.ToArray())
+                $bodyMs.Dispose()
+                try {
+                    $incoming = $bodyStr | ConvertFrom-Json
+                    $connection = $null
+                    foreach ($item in $script:Connections) { if ($item.id -eq $incoming.id) { $connection = $item; break } }
+                    if (-not $connection) { throw 'Connection request not found' }
+                    foreach ($property in $incoming.PSObject.Properties) { $connection[$property.Name] = $property.Value }
+                    $connection.updated = [datetime]::UtcNow.ToString('o')
+                    Send-Json $resp @{ok=$true}
+                } catch {
+                    Send-Json $resp @{error=$_.Exception.Message} 404
+                }
+                continue
+            }
+
             # API: change device name
             if ($rawUrl -eq '/api/device/name' -and $method -eq 'POST') {
                 $bodyMs = New-Object System.IO.MemoryStream
@@ -728,6 +1124,10 @@ try {
                     $body = $bodyStr | ConvertFrom-Json
                     if ($body.name) {
                         $script:DeviceName = $body.name
+                        try {
+                            @{id=$script:DeviceId;name=$script:DeviceName} | ConvertTo-Json -Compress |
+                                Set-Content -LiteralPath $deviceStatePath -Encoding UTF8
+                        } catch {}
                         Write-Host "  [$ts] Device name changed to: $($body.name)" -ForegroundColor Cyan
                         Send-Json $resp @{ok=$true; name=$script:DeviceName}
                     } else {
@@ -756,8 +1156,25 @@ try {
                 $bodyMs.Dispose()
                 try {
                     $msg = $bodyStr | ConvertFrom-Json
+                    if ([string]::IsNullOrWhiteSpace([string]$msg.from) -or
+                        [string]::IsNullOrWhiteSpace([string]$msg.to) -or
+                        [string]::IsNullOrWhiteSpace([string]$msg.text)) {
+                        throw 'from, to and text are required'
+                    }
+                    $messageId = [string]$msg.id
+                    if ($messageId -notmatch '^[a-zA-Z0-9_-]{8,80}$') {
+                        $messageId = [guid]::NewGuid().ToString('N').Substring(0, 12)
+                    }
+                    $existingMessage = $null
+                    foreach ($existing in $script:Messages) {
+                        if ([string]$existing.id -eq $messageId) { $existingMessage = $existing; break }
+                    }
+                    if ($existingMessage) {
+                        Send-Json $resp @{ok=$true; id=$existingMessage.id; ts=$existingMessage.ts; duplicate=$true}
+                        continue
+                    }
                     $chatMsg = @{
-                        id       = [guid]::NewGuid().ToString('N').Substring(0, 8)
+                        id       = $messageId
                         from     = $msg.from
                         fromName = $msg.fromName
                         to       = $msg.to
@@ -767,7 +1184,7 @@ try {
                     }
                     [void]$script:Messages.Add($chatMsg)
                     # Forward to target device if it's not local
-                    if ($msg.targetIp -and $msg.targetPort) {
+                    if ($msg.to -ne $script:DeviceId -and $msg.targetIp -and $msg.targetPort) {
                         try {
                             $fwdBytes = [System.Text.Encoding]::UTF8.GetBytes(($chatMsg | ConvertTo-Json -Compress))
                             $fwdReq = [System.Net.WebRequest]::Create("http://$($msg.targetIp):$($msg.targetPort)/api/chat/deliver")
@@ -781,7 +1198,7 @@ try {
                             $fwdReq.GetResponse().Close()
                         } catch { Write-Host "  [$ts] Forward failed: $_" -ForegroundColor DarkYellow }
                     }
-                    Send-Json $resp @{ok=$true; id=$chatMsg.id}
+                    Send-Json $resp @{ok=$true; id=$chatMsg.id; ts=$chatMsg.ts}
                 } catch {
                     Send-Json $resp @{error=$_.Exception.Message} 400
                 }
@@ -795,6 +1212,14 @@ try {
                 $bodyMs.Dispose()
                 try {
                     $chatMsg = $bodyStr | ConvertFrom-Json
+                    $alreadyDelivered = $false
+                    foreach ($existing in $script:Messages) {
+                        if ([string]$existing.id -eq [string]$chatMsg.id) { $alreadyDelivered = $true; break }
+                    }
+                    if ($alreadyDelivered) {
+                        Send-Json $resp @{ok=$true; duplicate=$true}
+                        continue
+                    }
                     $msgHash = @{
                         id       = $chatMsg.id
                         from     = $chatMsg.from
@@ -815,39 +1240,87 @@ try {
             }
             # Chat file receive endpoint
             if ($rawUrl -eq '/api/chat/file' -and $method -eq 'POST') {
-                $ct = $req.ContentType
-                if ($ct -notmatch 'boundary=(.+)$') {
-                    Send-Json $resp @{error='Invalid Content-Type'} 400
-                    continue
-                }
-                $boundary = $matches[1].Trim('"')
-                $files = Parse-Multipart $req.InputStream $boundary
                 $chatDir = Join-Path $SharePath '.lan-share-chat'
                 if (-not (Test-Path $chatDir)) { New-Item -ItemType Directory -Path $chatDir -Force | Out-Null }
                 $fromId = $req.Headers['X-Device-Id']
                 $fromName = $req.Headers['X-Device-Name']
+                if ($fromName) { $fromName = [System.Uri]::UnescapeDataString($fromName) }
                 $targetId = $req.Headers['X-Target-Id']
                 $targetIp = $req.Headers['X-Target-Ip']
                 $targetPort = $req.Headers['X-Target-Port']
+                $messageId = [string]$req.Headers['X-Message-Id']
+                if ($messageId -match '^[a-zA-Z0-9_-]{8,80}$') {
+                    $duplicateFileMessage = $false
+                    foreach ($existing in $script:Messages) {
+                        if ([string]$existing.id -eq $messageId) { $duplicateFileMessage = $true; break }
+                    }
+                    if ($duplicateFileMessage) {
+                        Send-Json $resp @{ok=$true; id=$messageId; duplicate=$true}
+                        continue
+                    }
+                } else {
+                    $messageId = $null
+                }
                 $targetTo = if ($targetId) { $targetId } else { $script:DeviceId }
-                foreach ($f in $files) {
-                    $safeName = [System.IO.Path]::GetFileName($f.Name)
+                $receivedFiles = @()
+                $rawFileName = Get-QueryValueUtf8 $req.Url.Query 'name'
+                if ($rawFileName) {
+                    $safeName = [System.IO.Path]::GetFileName($rawFileName)
+                    if ([string]::IsNullOrWhiteSpace($safeName)) {
+                        Send-Json $resp @{error='Invalid file name'} 400
+                        continue
+                    }
                     $dest = Join-Path $chatDir $safeName
-                    [System.IO.File]::WriteAllBytes($dest, $f.Bytes)
+                    $transferId = [string]$req.Headers['X-Transfer-Id']
+                    $transfer = New-TransferRecord $transferId $safeName $req.ContentLength64 'upload' 'chat' $fromName $script:DeviceName
+                    try {
+                        Save-RequestStream $req $dest $transfer
+                        Update-TransferRecord $transfer (Get-Item -LiteralPath $dest).Length 'done'
+                    } catch {
+                        Update-TransferRecord $transfer ([long]$transfer['bytesDone']) 'failed' $_.Exception.Message
+                        throw
+                    }
+                    $receivedFiles += [PSCustomObject]@{ Name = $safeName; Length = (Get-Item -LiteralPath $dest).Length }
+                } else {
+                    # Backward-compatible multipart path for older pages.
+                    $boundary = Get-MultipartBoundary $req.ContentType
+                    if (-not $boundary) {
+                        Send-Json $resp @{error='Invalid Content-Type'} 400
+                        continue
+                    }
+                    $files = Parse-Multipart $req.InputStream $boundary
+                    foreach ($f in $files) {
+                        $safeName = [System.IO.Path]::GetFileName($f.Name)
+                        $dest = Join-Path $chatDir $safeName
+                        [System.IO.File]::WriteAllBytes($dest, $f.Bytes)
+                        $receivedFiles += [PSCustomObject]@{ Name = $safeName; Length = $f.Bytes.Length }
+                    }
+                }
+                if ($receivedFiles.Count -eq 0) {
+                    Send-Json $resp @{error='No valid file was received'} 400
+                    continue
+                }
+                $fileMessageIndex = 0
+                $sentMessageIds = @()
+                foreach ($f in $receivedFiles) {
+                    $safeName = $f.Name
+                    $fileMessageId = if ($messageId -and $fileMessageIndex -eq 0) { $messageId } else { [guid]::NewGuid().ToString('N').Substring(0, 12) }
                     $chatMsg = @{
-                        id       = [guid]::NewGuid().ToString('N').Substring(0, 8)
+                        id       = $fileMessageId
                         from     = $fromId
                         fromName = $fromName
                         to       = $targetTo
                         text     = $safeName
                         ts       = [datetime]::UtcNow.ToString('o')
                         type     = 'file'
-                        fileSize = $f.Bytes.Length
+                        fileSize = $f.Length
                     }
                     [void]$script:Messages.Add($chatMsg)
+                    $sentMessageIds += $chatMsg.id
+                    $fileMessageIndex++
                     Write-Host "  [$ts] CHAT FILE from $($chatMsg.fromName): $safeName" -ForegroundColor Magenta
                     # Forward file message to target server if remote
-                    if ($targetIp -and $targetPort) {
+                    if ($targetTo -ne $script:DeviceId -and $targetIp -and $targetPort) {
                         try {
                             $fwdMsg = @{
                                 id       = $chatMsg.id
@@ -857,7 +1330,7 @@ try {
                                 text     = $safeName
                                 ts       = $chatMsg.ts
                                 type     = 'file'
-                                fileSize = $f.Bytes.Length
+                                fileSize = $f.Length
                             }
                             $fwdBytes = [System.Text.Encoding]::UTF8.GetBytes(($fwdMsg | ConvertTo-Json -Compress))
                             $fwdReq = [System.Net.WebRequest]::Create("http://$targetIp`:$targetPort/api/chat/deliver")
@@ -872,7 +1345,7 @@ try {
                         } catch { Write-Host "  [$ts] Forward file failed: $_" -ForegroundColor DarkYellow }
                     }
                 }
-                Send-Json $resp @{ok=$true}
+                Send-Json $resp @{ok=$true; ids=$sentMessageIds}
                 continue
             }
             # Transfer list endpoint
@@ -897,6 +1370,8 @@ try {
                 Write-Host "  [$ts] SPA index.html" -ForegroundColor DarkGray
                 $resp.StatusCode = 200
                 $resp.ContentType = 'text/html; charset=utf-8'
+                $resp.Headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+                $resp.Headers['Pragma'] = 'no-cache'
                 $resp.ContentLength64 = $indexHtmlBytes.Length
                 $resp.OutputStream.Write($indexHtmlBytes, 0, $indexHtmlBytes.Length)
                 $resp.OutputStream.Close()
@@ -943,9 +1418,9 @@ try {
 
             # Force-download endpoint (Content-Disposition: attachment)
             if ($rawUrl -match '^/api/download\??(.*)' -and $method -eq 'GET') {
-                $dlPath = $query['path']
+                $dlPath = Get-QueryValueUtf8 $req.Url.Query 'path'
                 if (-not $dlPath) { $dlPath = '' }
-                $dlPath = [System.Uri]::UnescapeDataString($dlPath).TrimStart('/')
+                $dlPath = $dlPath.TrimStart('/')
                 $dlFull = Join-Path $SharePath $dlPath
                 $dlFull = [System.IO.Path]::GetFullPath($dlFull).TrimEnd('\')
                 if (-not $dlFull.StartsWith($fullShare, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -965,8 +1440,20 @@ try {
                 $resp.SendChunked = $false
                 $ts = Get-Date -Format 'HH:mm:ss'
                 Write-Host "  [$ts] DOWNLOAD $dispName ($(Format-Size $fi.Length))" -ForegroundColor Cyan
+                $transferId = Get-QueryValueUtf8 $req.Url.Query 'transferId'
+                $clientName = Get-QueryValueUtf8 $req.Url.Query 'clientName'
+                $transferKind = Get-QueryValueUtf8 $req.Url.Query 'kind'
+                if ([string]::IsNullOrWhiteSpace($clientName)) { $clientName = $req.RemoteEndPoint.Address.ToString() }
+                if ([string]::IsNullOrWhiteSpace($transferKind)) { $transferKind = 'file' }
+                $transfer = New-TransferRecord $transferId $dispName $fi.Length 'download' $transferKind $script:DeviceName $clientName
                 $fs = [System.IO.File]::OpenRead($dlFull)
-                try { $fs.CopyTo($resp.OutputStream) } finally { $fs.Dispose() }
+                try {
+                    Copy-StreamWithProgress $fs $resp.OutputStream $transfer
+                    Update-TransferRecord $transfer $fi.Length 'done'
+                } catch {
+                    Update-TransferRecord $transfer ([long]$transfer['bytesDone']) 'failed' $_.Exception.Message
+                    throw
+                } finally { $fs.Dispose() }
                 $resp.OutputStream.Close()
                 continue
             }
@@ -980,9 +1467,9 @@ try {
                 }
                 # Resolve target dir: new API uses ?path= query param, old uses URL path
                 if ($rawUrl -eq '/api/upload') {
-                    $uploadRel = $query['path']
+                    $uploadRel = Get-QueryValueUtf8 $req.Url.Query 'path'
                     if (-not $uploadRel) { $uploadRel = '' }
-                    $uploadRel = [System.Uri]::UnescapeDataString($uploadRel).TrimStart('/')
+                    $uploadRel = $uploadRel.TrimStart('/')
                     $targetDir = Join-Path $SharePath $uploadRel
                     $targetDir = [System.IO.Path]::GetFullPath($targetDir).TrimEnd('\')
                 } else {
@@ -996,19 +1483,46 @@ try {
                     Send-Text $resp "目标目录不存在" 404
                     continue
                 }
-                $ct = $req.ContentType
-                if ($ct -notmatch 'boundary=(.+)$') {
-                    Send-Text $resp "无效的 Content-Type" 400
-                    continue
-                }
-                $boundary = $matches[1].Trim('"')
-                $files = Parse-Multipart $req.InputStream $boundary
+                $boundary = Get-MultipartBoundary $req.ContentType
                 $saved = @()
-                foreach ($f in $files) {
-                    $safeName = [System.IO.Path]::GetFileName($f.Name)
+                $rawFileName = Get-QueryValueUtf8 $req.Url.Query 'name'
+                if ($rawFileName) {
+                    $safeName = [System.IO.Path]::GetFileName($rawFileName)
+                    if ([string]::IsNullOrWhiteSpace($safeName)) {
+                        Send-Text $resp "无效的文件名" 400
+                        continue
+                    }
                     $dest = Join-Path $targetDir $safeName
-                    [System.IO.File]::WriteAllBytes($dest, $f.Bytes)
+                    $transferId = [string]$req.Headers['X-Transfer-Id']
+                    $clientName = [string]$req.Headers['X-Client-Name']
+                    if ($clientName) { $clientName = [System.Uri]::UnescapeDataString($clientName) }
+                    if ([string]::IsNullOrWhiteSpace($clientName)) { $clientName = $req.RemoteEndPoint.Address.ToString() }
+                    $transfer = New-TransferRecord $transferId $safeName $req.ContentLength64 'upload' 'file' $clientName $script:DeviceName
+                    try {
+                        Save-RequestStream $req $dest $transfer
+                        Update-TransferRecord $transfer (Get-Item -LiteralPath $dest).Length 'done'
+                    } catch {
+                        Update-TransferRecord $transfer ([long]$transfer['bytesDone']) 'failed' $_.Exception.Message
+                        throw
+                    }
                     $saved += $safeName
+                } else {
+                    # Backward-compatible multipart path for older pages.
+                    if (-not $boundary) {
+                        Send-Text $resp "无效的 Content-Type" 400
+                        continue
+                    }
+                    $files = Parse-Multipart $req.InputStream $boundary
+                    foreach ($f in $files) {
+                        $safeName = [System.IO.Path]::GetFileName($f.Name)
+                        $dest = Join-Path $targetDir $safeName
+                        [System.IO.File]::WriteAllBytes($dest, $f.Bytes)
+                        $saved += $safeName
+                    }
+                }
+                if ($saved.Count -eq 0) {
+                    Send-Text $resp "没有收到有效文件" 400
+                    continue
                 }
                 $msg = ($saved -join ', ')
                 Write-Host "  [$ts] UPLOAD $saved -> $targetDir" -ForegroundColor Cyan

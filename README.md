@@ -30,6 +30,7 @@ SoftwareToolkit 是一个基于 **WPF (.NET 8)** 的桌面工具启动器，支�
 SoftwareToolkit/
 ├── build.ps1                     # 一键构建脚本
 ├── build.bat                     # 双击打包入口（独立运行 ZIP）
+├── package-all.cmd               # 同时打包独立版和轻量版
 ├── SoftwareToolkit.sln           # 解决方案
 ├── src/
 │   ├── SoftwareToolkit/          # WPF 主程序
@@ -45,7 +46,7 @@ SoftwareToolkit/
 │   │   └── tools.json            # 主配置文件
 │   └── SoftwareToolkit.Sdk/      # 插件 SDK
 │       └── IToolPlugin.cs        # 插件接口定义
-└── publish/                      # 构建输出 (已 gitignore)
+└── release/                      # 发布包输出 (已 gitignore)
 ```
 
 ---
@@ -60,35 +61,35 @@ SoftwareToolkit/
 
 ### 构建
 
-**双击根目录的 `build.bat`**，自动生成 Release / win-x64 独立运行包和 ZIP，成功后打开输出文件夹，结束时保留窗口查看结果。构建机器需要 .NET 8 SDK，生成的独立包无需另装运行时。
+**双击根目录的 `build.bat`**，自动生成 Release / win-x64 独立运行包和 ZIP，成功后打开 `release` 文件夹。双击 `package-all.cmd` 可同时生成独立版与轻量版，布局与 AI-Master 的打包方式一致。
 
 ```powershell
-# 一键构建 (Release, win-x64, 框架依赖模式)
+# 一键构建（Release、win-x64、自包含并生成 ZIP）
 powershell -ExecutionPolicy Bypass -File build.ps1
 
-# 生成便携 ZIP、文件清单及 SHA-256 校验
-powershell -ExecutionPolicy Bypass -File build.ps1 -Zip
+# 轻量版（需要目标机器安装 .NET 8 Desktop Runtime）
+powershell -ExecutionPolicy Bypass -File build.ps1 -Lightweight
 
 # 打包完成后打开输出文件夹
-powershell -ExecutionPolicy Bypass -File build.ps1 -SelfContained -Zip -OpenOutput
+powershell -ExecutionPolicy Bypass -File build.ps1 -OpenOutput
 
-# 包含运行时，适合没有安装 .NET 的机器（体积更大）
-powershell -ExecutionPolicy Bypass -File build.ps1 -SelfContained -Zip
+# 同时生成独立版和轻量版
+powershell -ExecutionPolicy Bypass -File build.ps1 -All
 
 # ARM64 / 调试 / 构建后停留，均可按需指定
 powershell -ExecutionPolicy Bypass -File build.ps1 -Runtime win-arm64 -Configuration Debug -Pause
 
 # 或手动执行
-dotnet publish src\SoftwareToolkit\SoftwareToolkit.csproj -c Release -r win-x64 -o publish -p:SelfContained=false
+dotnet publish src\SoftwareToolkit\SoftwareToolkit.csproj -c Release -r win-x64 -o release\manual -p:SelfContained=false
 ```
 
-每次构建输出到独立的 `publish/SoftwareToolkit-架构-模式-时间-随机标识/` 目录，避免旧文件混入，也不会覆盖现有工具配置。默认不等待输入，构建失败返回非零退出码，适合 CI。使用 `-Zip` 时还会生成同名 ZIP 和 `.sha256` 文件。
+构建结果使用固定名称写入 `release/SoftwareToolkit-架构-standalone` 或 `release/SoftwareToolkit-架构-lightweight`，同时生成同名 ZIP 和 `.sha256`。每次打包会先清理对应的旧发布包，避免残留文件混入；用户配置保存在 `%LOCALAPPDATA%/SoftwareToolkit`，不会被打包清理。
 
 脚本显示发布、资源校验、清单、压缩四个阶段，并将编译日志保存为输出目录旁的同名 `.log`。打包前逐一校验 `tools.json` 和 `tools/` 文件是否完整且与源码一致；ZIP 包含隐藏文件，压缩完成后才生成正式 `.zip` 文件。命令行自动化请直接使用 `build.ps1`；`build.bat` 会等待按键，传入参数时按指定参数运行脚本。
 
 双击输出目录中的 `SoftwareToolkit.exe` 即可运行，`tools.json` 与 `tools/` 必须保留在它旁边。`package-manifest.json` 记录打包参数及每个有效载荷文件的大小、SHA-256（不包含清单自身）。项目文件统一负责复制资源，不再由脚本重复复制。升级前请备份工具配置与 `%LOCALAPPDATA%/SoftwareToolkit` 用户状态。
 
-默认发布为框架依赖单文件，Release 不携带调试符号，托盘直接使用 .NET 内置 `NotifyIcon`。独立包启用单文件压缩；为了兼容 WPF 和反射插件，禁用裁剪。
+默认发布为自包含单文件，Release 不携带调试符号，托盘直接使用 .NET 内置 `NotifyIcon`。独立包启用单文件压缩；为了兼容 WPF 和反射插件，禁用裁剪。
 
 ### 运行
 

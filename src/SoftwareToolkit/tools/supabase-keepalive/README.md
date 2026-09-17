@@ -18,7 +18,9 @@
 
 自动计划统一注册在 Windows 任务目录 `\SoftwareToolkit\`，任务名为 `Supabase KeepAlive`。它会直接显示在 SoftwareToolkit 的“定时任务管理器”里，可在那里立即运行、启用/禁用或删除；保活界面的“任务管理器”按钮也可直接打开该工具。旧版根目录任务会在首次应用计划时自动迁移，避免重复执行。
 
-配置和日志位于 `%LOCALAPPDATA%\SoftwareToolkit\SupabaseKeepAlive`。停用计划任务不会删除配置和日志。
+Worker 随 SoftwareToolkit 放在 `tools\supabase-keepalive` 中并一起发布；计划任务直接运行这份 Worker。只有 DPAPI 加密配置和日志位于 `%LOCALAPPDATA%\SoftwareToolkit\SupabaseKeepAlive`。停用计划任务不会删除配置和日志。
+
+也可以在“定时任务管理器”中选择“Supabase 保活”预设，再通过“配置文件 → 浏览…”手动选择要使用的 JSON。Worker 兼容原版工具中含 `password`、`targets[].apikey` 的 JSON；这类文件以明文保存密码，运行日志会给出安全警告。建议先在“Supabase 保活”工具中导入旧配置并保存，再选择生成的 DPAPI 加密配置。
 
 ## 建议的表和 RLS
 

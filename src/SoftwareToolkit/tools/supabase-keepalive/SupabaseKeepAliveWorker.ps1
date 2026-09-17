@@ -1,6 +1,7 @@
 ﻿param(
     [Parameter(Mandatory = $true)]
-    [string]$ConfigPath
+    [string]$ConfigPath,
+    [switch]$ValidateConfigOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +10,14 @@ $appDir = Join-Path $env:LOCALAPPDATA 'SoftwareToolkit\SupabaseKeepAlive'
 $logPath = Join-Path $appDir 'worker.log'
 $mutex = [Threading.Mutex]::new($false, 'Local\SoftwareToolkit_SupabaseKeepAlive_v2')
 $hasMutex = $false
+
+function Get-ObjectValue {
+    param($Object, [string]$Name, $Default = $null)
+    if ($null -eq $Object) { return $Default }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($property) { return $property.Value }
+    return $Default
+}
 
 function Write-KeepAliveLog {
     param([string]$Message, [string]$Level = 'INFO')
@@ -39,13 +48,24 @@ function Test-PrivilegedKey {
 function Read-KeepAliveConfig {
     if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { throw "配置文件不存在：$ConfigPath" }
     $config = Get-Content -Raw -LiteralPath $ConfigPath -Encoding UTF8 | ConvertFrom-Json
-    if (-not $config.email -or -not $config.passwordProtected) { throw '配置缺少邮箱或加密密码' }
-    if (-not $config.targets -or @($config.targets).Count -eq 0) { throw '配置中没有 Supabase 项目' }
-    $secure = ConvertTo-SecureString ([string]$config.passwordProtected)
-    $credential = [PSCredential]::new('keepalive', $secure)
-    $password = $credential.GetNetworkCredential().Password
-    if ([string]::IsNullOrWhiteSpace($password)) { throw '无法读取加密密码，请回到工具中重新保存' }
-    return [pscustomobject]@{ Config = $config; Password = $password }
+    if (-not (Get-ObjectValue $config 'email' '')) { throw '配置缺少邮箱' }
+    $targets = Get-ObjectValue $config 'targets' $null
+    if (-not $targets -or @($targets).Count -eq 0) { throw '配置中没有 Supabase 项目' }
+    $isLegacyPlaintext = $false
+    $protectedPassword = [string](Get-ObjectValue $config 'passwordProtected' '')
+    $plainPassword = [string](Get-ObjectValue $config 'password' '')
+    if ($protectedPassword) {
+        $secure = ConvertTo-SecureString $protectedPassword
+        $credential = [PSCredential]::new('keepalive', $secure)
+        $password = $credential.GetNetworkCredential().Password
+        if ([string]::IsNullOrWhiteSpace($password)) { throw '无法读取加密密码，请回到工具中重新保存' }
+    }
+    elseif ($plainPassword) {
+        $password = $plainPassword
+        $isLegacyPlaintext = $true
+    }
+    else { throw '配置缺少密码或加密密码' }
+    return [pscustomobject]@{ Config = $config; Password = $password; IsLegacyPlaintext = $isLegacyPlaintext }
 }
 
 function Invoke-PostJson {
@@ -89,29 +109,40 @@ try {
 
     $loaded = Read-KeepAliveConfig
     $config = $loaded.Config
-    $tableName = if ($config.tableName) { [string]$config.tableName } else { 'test' }
+    if ($ValidateConfigOnly) {
+        Write-Output ('VALID|Format={0}|Targets={1}' -f $(if ($loaded.IsLegacyPlaintext) { 'LegacyPlaintext' } else { 'DpapiEncrypted' }), @((Get-ObjectValue $config 'targets' @())).Count)
+        exit 0
+    }
+    if ($loaded.IsLegacyPlaintext) { Write-KeepAliveLog '正在使用原版明文密码配置；建议在 Supabase 保活工具中导入并保存，以转换为 DPAPI 加密配置' 'WARN' }
+    $configuredTableName = [string](Get-ObjectValue $config 'tableName' (Get-ObjectValue $config 'keepAliveTableName' ''))
+    $tableName = if ($configuredTableName) { $configuredTableName } else { 'test' }
     if ($tableName -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { throw "非法表名：$tableName" }
-    $timeout = if ($config.timeoutSec) { [int]$config.timeoutSec } else { 12 }
-    $targetDelay = if ($null -ne $config.targetIntervalSeconds) { [double]$config.targetIntervalSeconds } else { 0.2 }
+    $configuredTimeout = Get-ObjectValue $config 'timeoutSec' $null
+    $timeout = if ($null -ne $configuredTimeout) { [int]$configuredTimeout } else { 12 }
+    $configuredTargetDelay = Get-ObjectValue $config 'targetIntervalSeconds' (Get-ObjectValue $config 'intervalSeconds' $null)
+    $targetDelay = if ($null -ne $configuredTargetDelay) { [double]$configuredTargetDelay } else { 0.2 }
     $success = 0
     $failed = 0
-    Write-KeepAliveLog "开始执行，共 $(@($config.targets).Count) 个项目"
+    $targets = @(Get-ObjectValue $config 'targets' @())
+    Write-KeepAliveLog "开始执行，共 $($targets.Count) 个项目"
 
-    foreach ($target in @($config.targets)) {
-        $name = if ($target.name) { [string]$target.name } else { [string]$target.url }
+    foreach ($target in $targets) {
+        $targetUrl = [string](Get-ObjectValue $target 'url' '')
+        $targetName = [string](Get-ObjectValue $target 'name' '')
+        $name = if ($targetName) { $targetName } else { $targetUrl }
         $stage = '配置检查'
         try {
-            if (-not $target.url -or -not $target.apiKey) { throw 'URL 或 API Key 为空' }
-            $key = [string]$target.apiKey
+            $key = [string](Get-ObjectValue $target 'apiKey' (Get-ObjectValue $target 'apikey' ''))
+            if (-not $targetUrl -or [string]::IsNullOrWhiteSpace($key)) { throw 'URL 或 API Key 为空' }
             if (Test-PrivilegedKey $key) { throw '禁止使用 secret/service_role key，请改用 publishable/anon key' }
             $uri = $null
-            if (-not [Uri]::TryCreate(([string]$target.url).TrimEnd('/'), [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https') {
+            if (-not [Uri]::TryCreate($targetUrl.TrimEnd('/'), [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https') {
                 throw '项目 URL 必须是有效的 HTTPS 地址'
             }
             if ($uri.UserInfo -or $uri.Query -or $uri.Fragment) { throw '项目 URL 不能包含用户信息、查询参数或片段' }
             $baseUrl = $uri.AbsoluteUri.TrimEnd('/')
             $headers = @{ apikey = $key }
-            $authBody = @{ email = [string]$config.email; password = $loaded.Password } | ConvertTo-Json -Compress
+            $authBody = @{ email = [string](Get-ObjectValue $config 'email' ''); password = $loaded.Password } | ConvertTo-Json -Compress
             $stage = '登录'
             $authText = Invoke-PostJson -Uri "$baseUrl/auth/v1/token?grant_type=password" -Headers $headers -Body $authBody -TimeoutSec $timeout
             $auth = $authText | ConvertFrom-Json

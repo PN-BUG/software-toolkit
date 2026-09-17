@@ -1,0 +1,14 @@
+{
+  "id": "lan-connection-bridge",
+  "name": "蒲公英降落台",
+  "description": "安卓后台连接通知工具；浏览器关闭时也能收到请求，同意后自动打开共享网页",
+  "category": "网络/共享",
+  "tags": ["局域网", "Android", "连接通知", "后台服务", "文件共享"],
+  "icon": "network",
+  "author": "SoftwareToolkit",
+  "version": "1.1.0",
+  "kind": "Executable",
+  "path": "install-bridge.bat",
+  "args": "",
+  "runAsAdmin": false
+}

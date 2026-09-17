@@ -19,6 +19,7 @@ public partial class MainWindow : Window
 {
     private readonly ConfigLoader _configLoader;
     private readonly ToolLauncher _toolLauncher;
+    private readonly RunningToolMonitor _runningToolMonitor = new();
     internal readonly System.Windows.Forms.NotifyIcon TrayIcon = new() { Text = "SoftwareToolkit" };
     private List<ToolDefinition> _allTools = new();
     private readonly ObservableCollection<ToolDefinition> _filteredTools = new();
@@ -34,6 +35,10 @@ public partial class MainWindow : Window
     private readonly System.Windows.Threading.DispatcherTimer _searchTimer = new()
     {
         Interval = TimeSpan.FromMilliseconds(180)
+    };
+    private readonly System.Windows.Threading.DispatcherTimer _performanceTimer = new()
+    {
+        Interval = TimeSpan.FromSeconds(1.5)
     };
     private readonly HashSet<string> _batchSelectedIds = new();
 
@@ -79,10 +84,14 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); ApplyFilters(); };
+        _performanceTimer.Tick += (_, _) => RefreshRunningTools();
+        RunningToolsList.ItemsSource = _runningToolMonitor.Items;
         PreviewKeyDown += Window_PreviewKeyDown;
         Closed += (_, _) =>
         {
             _searchTimer.Stop();
+            _performanceTimer.Stop();
+            _runningToolMonitor.Dispose();
             UnregisterHotKey();
             TrayIcon.Visible = false;
             TrayIcon.Icon?.Dispose();
@@ -93,6 +102,7 @@ public partial class MainWindow : Window
 
         _configLoader = new ConfigLoader();
         _toolLauncher = new ToolLauncher(_configLoader, IntPtr.Zero);
+        _toolLauncher.ProcessStarted += TrackStartedProcess;
         var trayMenu = new System.Windows.Forms.ContextMenuStrip();
         trayMenu.Items.Add("显示主窗口", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
         trayMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
@@ -138,6 +148,43 @@ public partial class MainWindow : Window
         BuildCategoryTree();
         RefreshToolCards();
         RegisterHotKey();
+        RefreshRunningTools();
+        _performanceTimer.Start();
+    }
+
+    private void TrackStartedProcess(ToolDefinition tool, Process process)
+    {
+        _runningToolMonitor.Track(tool, process);
+        RefreshRunningTools();
+    }
+
+    private void RefreshRunningTools()
+    {
+        _runningToolMonitor.Refresh();
+        var count = _runningToolMonitor.Items.Count;
+        RunningCountText.Text = count.ToString();
+        RunningCpuText.Text = $"{_runningToolMonitor.TotalCpuPercent:0.0}%";
+        RunningMemoryText.Text = RunningToolProcess.FormatBytes(_runningToolMonitor.TotalMemoryBytes);
+        RunningToolsEmpty.Visibility = count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RunningToolsScroll.Visibility = count == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void StopRunningTool_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: RunningToolProcess item }) return;
+        var answer = WpfMessageBox.Show(
+            $"确定结束“{item.ToolName}”及其子进程吗？",
+            "结束工具",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        if (_runningToolMonitor.Stop(item))
+            StatusText.Text = $"已结束: {item.ToolName}";
+        else
+            WpfMessageBox.Show("无法结束该进程。它可能已经退出，或需要管理员权限。", "结束失败",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        RefreshRunningTools();
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)

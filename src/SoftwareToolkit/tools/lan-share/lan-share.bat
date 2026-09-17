@@ -4,7 +4,7 @@
 ::  LAN file sharing server launcher
 ::
 ::  Usage:
-::    lan-share.bat                       (share current directory on default port 8088)
+::    lan-share.bat                       (share package root on default port 8088)
 ::    lan-share.bat D:\MyFolder           (share a specific directory)
 ::    lan-share.bat D:\MyFolder 9000      (specify directory and port)
 ::  Drag & drop a folder onto this file to share it.
@@ -13,12 +13,14 @@
 set "ARG1=%~1"
 set "ARG2=%~2"
 
+:: Elevated processes may start in C:\Windows\System32. When no path is
+:: supplied, share the SoftwareToolkit package root instead.
+if "%ARG1%"=="" set "ARG1=%~dp0..\.."
+
 :: Build argument list dynamically
 set "PS_ARGS=-ExecutionPolicy Bypass -File "%~dp0lan-share.ps1""
 
-if not "%ARG1%"=="" (
-    set "PS_ARGS=%PS_ARGS% -SharePath "%ARG1%""
-)
+set "PS_ARGS=%PS_ARGS% -SharePath "%ARG1%""
 
 :: Only pass -Port if arg2 is a valid number
 if not "%ARG2%"=="" (

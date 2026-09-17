@@ -6,8 +6,10 @@
   "tags": ["定时任务", "开机自启", "自动化", "计划任务"],
   "icon": "clock",
   "author": "SoftwareToolkit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "kind": "Executable",
-  "path": "task-scheduler.bat",
+  "path": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+  "args": "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"${dir}\\task-scheduler.ps1\"",
+  "workingDirectory": ".",
   "runAsAdmin": true
 }
