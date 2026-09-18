@@ -120,10 +120,33 @@ internal static class Program
             Check((string)((MenuItem)menu.Items[0]).Header == "启动工具", "launch is the first context action");
             Check((string)ActionItem(menu, "从工具箱移除…").Tag == "Danger", "remove action has danger styling");
             Check(!ActionItem(menu, "打开所在位置").IsEnabled, "missing path disables open location");
+            Check(!ActionItem(menu, "创建桌面快捷方式").IsEnabled, "missing executable disables desktop shortcut creation");
             var urlMenu = (ContextMenu)Call("BuildCardContextMenu", new ToolDefinition { Name = "Web", Kind = ToolKind.Url, Path = "https://example.com" });
-            Check(ActionItem(urlMenu, "复制链接").IsEnabled && !ActionItem(urlMenu, "打开所在位置").IsEnabled, "web tools offer copy link without a local folder action");
+            Check(ActionItem(urlMenu, "复制链接").IsEnabled && !ActionItem(urlMenu, "打开所在位置").IsEnabled && ActionItem(urlMenu, "创建桌面快捷方式").IsEnabled, "web tools offer copy link and desktop shortcut without a local folder action");
             var commandMenu = (ContextMenu)Call("BuildCardContextMenu", new ToolDefinition { Name = "Command", Kind = ToolKind.Command, Path = "echo hello" });
-            Check(ActionItem(commandMenu, "复制命令").IsEnabled, "command tools have an explicit copy-command action");
+            Check(ActionItem(commandMenu, "复制命令").IsEnabled && ActionItem(commandMenu, "创建桌面快捷方式").IsEnabled, "command tools have copy-command and desktop-shortcut actions");
+            var shortcutTestDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SoftwareToolkit-shortcut-test-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var urlShortcut = SoftwareToolkit.Services.DesktopShortcutService.Create(
+                    new ToolDefinition { Name = "Docs/Test", Kind = ToolKind.Url, Path = "https://example.com/docs" },
+                    null,
+                    shortcutTestDirectory);
+                Check(System.IO.File.Exists(urlShortcut) && System.IO.Path.GetExtension(urlShortcut) == ".url" &&
+                      System.IO.File.ReadAllText(urlShortcut).Contains("URL=https://example.com/docs"),
+                    "web desktop shortcut is created with a safe name and target URL");
+                var commandShortcut = SoftwareToolkit.Services.DesktopShortcutService.Create(
+                    new ToolDefinition { Name = "Command", Kind = ToolKind.Command, Path = "echo hello", RunAsAdmin = true },
+                    null,
+                    shortcutTestDirectory);
+                Check(System.IO.File.Exists(commandShortcut) && System.IO.Path.GetExtension(commandShortcut) == ".lnk",
+                    "command desktop shortcut is created as a Windows shell link");
+            }
+            finally
+            {
+                if (System.IO.Directory.Exists(shortcutTestDirectory))
+                    System.IO.Directory.Delete(shortcutTestDirectory, true);
+            }
             var locationMethod = typeof(MainWindow).GetMethod("ResolveToolLocation", BindingFlags.Static | BindingFlags.NonPublic)!;
             string? Location(ToolDefinition tool) => (string?)locationMethod.Invoke(null, new object[] { tool });
             var assemblyPath = typeof(Program).Assembly.Location;

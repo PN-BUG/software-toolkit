@@ -1,5 +1,7 @@
 @echo off
 setlocal
+rem Keep cmd.exe and PowerShell on the same code page so Chinese build output is not garbled.
+chcp 65001 >nul
 if not "%~1"=="" goto custom
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build.ps1" -OpenOutput
 goto done

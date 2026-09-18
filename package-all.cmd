@@ -1,5 +1,7 @@
 @echo off
 setlocal
+rem Keep cmd.exe and PowerShell on the same code page so Chinese build output is not garbled.
+chcp 65001 >nul
 cd /d "%~dp0"
 
 echo SoftwareToolkit one-click packager

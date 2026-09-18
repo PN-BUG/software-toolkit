@@ -13,6 +13,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Windows PowerShell otherwise uses the active OEM code page for native-process
+# output. The CMD launchers select UTF-8 as well, so keep the full output chain
+# (dotnet -> PowerShell -> cmd.exe) on one encoding.
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
+# Load the matching built-in module even if the caller passed PowerShell 7
+# module paths to Windows PowerShell through the environment.
+$utilityModule = Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1'
+Import-Module $utilityModule -ErrorAction Stop
+
 $projectPath = Join-Path $PSScriptRoot 'src\SoftwareToolkit\SoftwareToolkit.csproj'
 $releaseRoot = Join-Path $PSScriptRoot 'release'
 

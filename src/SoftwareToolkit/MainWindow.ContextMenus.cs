@@ -52,6 +52,14 @@ public partial class MainWindow
         var open = MenuAction("打开所在位置", "\uE838", () => OpenToolLocation(tool), location != null);
         if (location == null) open.ToolTip = "找不到可打开的本地文件或目录";
         menu.Items.Add(open);
+        var canCreateShortcut = DesktopShortcutService.CanCreate(tool, location);
+        var createShortcut = MenuAction("创建桌面快捷方式", "\uE71B", () =>
+        {
+            var shortcutPath = DesktopShortcutService.Create(tool, location);
+            StatusText.Text = $"已创建桌面快捷方式: {Path.GetFileName(shortcutPath)}";
+        }, canCreateShortcut);
+        if (!canCreateShortcut) createShortcut.ToolTip = "该工具类型无法创建可独立启动的快捷方式";
+        menu.Items.Add(createShortcut);
         var copyLabel = tool.Kind switch
         {
             ToolKind.Command => "复制命令",
